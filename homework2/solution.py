@@ -17,7 +17,7 @@ class SVM:
         return ova
 
     def compute_loss(self, x, y):
-        """
+        """underunderunder
 	x : numpy array of shape (minibatch size, 401)
 	y : numpy array of shape (minibatch size, 10)
 	returns : float
@@ -25,7 +25,7 @@ class SVM:
         scores = x.dot(self.w)
         margins = np.maximum(0, 1 - np.multiply(scores, y))
         loss = np.mean(np.sum(margins, axis=1))
-        loss = self.C * loss / y.shape[1]
+        loss = self.C * loss
         # Computes de regularization term
         loss += 0.5 * np.sum(np.linalg.norm(self.w, ord=2, axis=0))
         return loss
@@ -57,7 +57,10 @@ class SVM:
 	x : numpy array of shape (number of examples to infer, 401)
 	returns : numpy array of shape (number of examples to infer, 10)
 	"""
-        return np.sign(x.dot(self.w))
+        y = x.dot(self.w)
+        y_ova = -1 * np.ones(y.shape)
+        y_ova[:, np.argmax(y, axis=1)] = 1
+        return y_ova
 
     def compute_accuracy(self, y_inferred, y):
         """
