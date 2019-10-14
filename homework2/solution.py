@@ -72,12 +72,12 @@ class SVM:
 
     def fit(self, x_train, y_train, x_test, y_test):
         """
-	x_train : numpy array of shape (number of training examples, 401)
-	y_train : numpy array of shape (number of training examples, 10)
-	x_test : numpy array of shape (number of training examples, 401)
-	y_test : numpy array of shape (number of training examples, 10)
-	returns : float, float, float, float
-	"""
+        x_train : numpy array of shape (number of training examples, 401)
+        y_train : numpy array of shape (number of training examples, 10)
+        x_test : numpy array of shape (number of training examples, 401)
+        y_test : numpy array of shape (number of training examples, 10)
+        returns : float, float, float, float
+        """
         self.num_features = x_train.shape[1]
         self.m = y_train.max() + 1
         y_train = self.make_one_versus_all_labels(y_train, self.m)
@@ -87,26 +87,26 @@ class SVM:
         for iteration in range(self.niter):
             # Train one pass through the training set
             for x, y in self.minibatch(x_train, y_train, size=self.batch_size):
-                grad = self.compute_gradient(x,y)
+                grad = self.compute_gradient(x, y)
                 self.w -= self.eta * grad
 
-                # Measure loss and accuracy on training set
-                train_loss = self.compute_loss(x_train,y_train)
-                y_inferred = self.infer(x_train)
-                train_accuracy = self.compute_accuracy(y_inferred, y_train)
+            # Measure loss and accuracy on training set
+            train_loss = self.compute_loss(x_train, y_train)
+            y_inferred = self.infer(x_train)
+            train_accuracy = self.compute_accuracy(y_inferred, y_train)
 
-		# Measure loss and accuracy on test set
-                test_loss = self.compute_loss(x_test,y_test)
-                y_inferred = self.infer(x_test)
-                test_accuracy = self.compute_accuracy(y_inferred, y_test)
+            # Measure loss and accuracy on test set
+            test_loss = self.compute_loss(x_test, y_test)
+            y_inferred = self.infer(x_test)
+            test_accuracy = self.compute_accuracy(y_inferred, y_test)
 
-                if self.verbose:
-                    print("Iteration %d:" % iteration)
-                    print("Train accuracy: %f" % train_accuracy)
-                    print("Train loss: %f" % train_loss)
-                    print("Test accuracy: %f" % test_accuracy)
-                    print("Test loss: %f" % test_loss)
-                    print("")
+            if self.verbose:
+                print("Iteration %d:" % iteration)
+                print("Train accuracy: %f" % train_accuracy)
+                print("Train loss: %f" % train_loss)
+                print("Test accuracy: %f" % test_accuracy)
+                print("Test loss: %f" % test_loss)
+                print("")
 
         return train_loss, train_accuracy, test_loss, test_accuracy
 
