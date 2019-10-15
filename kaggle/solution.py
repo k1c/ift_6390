@@ -25,8 +25,9 @@ class BaselineModel:
 
 class NaiveBayesModel:
     def __init__(self):
-        self._priors = None
-        self._class_conditioned_densities = None
+        self._vocab = None
+        self._X_train_sparse = None
+        self._y_train = None
 
     def _build_vocabulary(self, X_train):
         """
@@ -48,10 +49,47 @@ class NaiveBayesModel:
 
     def train(self, X_train, y_train):
         vocab, X_train_sparse = self._build_vocabulary(X_train)
+        self._vocabulary = vocab
+        self._X_train_sparse = X_train_sparse
 
+        self._compute_class_priors(y_train)
+        self._compute_class_cond_densities(X_train_sparse, y_train)
+
+    def _compute_class_priors(self, y_train):
+        classes, counts = np.unique(y_train, return_counts=True)
+        self._classes = classes
+        self._class_priors = {c: count / len(y_train) for c, count in zip(classes, counts)}
+
+    def _compute_class_cond_densities(self, X_train_sparse, y_train):
+        self._class_cond_densities = {}
+        for c in self._classes:
+            c_indexes = np.where(np.array(y_train) == c)
+            x_cond_y = X_train_sparse[c_indexes]
+            word_count = np.sum(x_cond_y, axis=0)
+            word_freq = word_count / np.sum(word_count)
+            self._class_cond_densities[c] = word_freq
+
+    def _compute_posterior(self, X, c):
+        prior = self._class_priors[c]
+        p = 1.
+        for word in X.split(" "):
+            i = self._vocabulary.get(word)
+            if i is None:
+                continue
+            p *= self._class_cond_densities[c][0, i]
+        return p * prior
 
     def predict(self, X_test):
-        pass
+        y_predictions = []
+        for x in X_test:
+            best_p = 0.
+            p_c = None
+            for c in self._classes:
+                p = self._compute_posterior(x, c)
+                if p > best_p:
+                    p_c = c
+            y_predictions.append(c)
+        return y_predictions
 
 
 
