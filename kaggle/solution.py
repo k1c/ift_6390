@@ -26,8 +26,9 @@ class BaselineModel:
 class NaiveBayesModel:
     def __init__(self):
         self._vocab = None
-        self._X_train_sparse = None
-        self._y_train = None
+        self._classes = None
+        self._class_priors = None
+        self._class_cond_densities = None
 
     def _build_vocabulary(self, X_train):
         """
@@ -50,7 +51,6 @@ class NaiveBayesModel:
     def train(self, X_train, y_train):
         vocab, X_train_sparse = self._build_vocabulary(X_train)
         self._vocabulary = vocab
-        self._X_train_sparse = X_train_sparse
 
         self._compute_class_priors(y_train)
         self._compute_class_cond_densities(X_train_sparse, y_train)
