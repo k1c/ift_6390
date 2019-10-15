@@ -59,7 +59,11 @@ class SVM:
 	"""
         y = x.dot(self.w)
         y_ova = -1 * np.ones(y.shape)
-        y_ova[:, np.argmax(y, axis=1)] = 1
+        y_ova[np.arange(y_ova.shape[0]), np.argmax(y, axis=1)] = 1
+        return y_ova
+
+    def compute_accuracy(self, y_inferred, y):
+        y_ova[:, class_index] = 1
         return y_ova
 
     def compute_accuracy(self, y_inferred, y):
@@ -118,16 +122,29 @@ if __name__ == "__main__":
     y_train = np.load("train_labels.npy")
     y_test = np.load("test_labels.npy")
 
-    svm = SVM(eta=0.001, C=30, niter=200, batch_size=5000, verbose=False)
-    # to compute the gradient or loss before training, do the following:
-    y_train_ova = svm.make_one_versus_all_labels(y_train, 10) # one-versus-all labels
-    svm.w = np.zeros([401, 10])
-    grad = svm.compute_gradient(x_train, y_train_ova)
-    loss = svm.compute_loss(x_train, y_train_ova)
 
-    train_loss, train_accuracy, test_loss, test_accuracy = svm.fit(x_train, y_train, x_test, y_test)
+    Cs = [1, 3, 10, 30, 100, 300]
+    etas = [0.01, 0.001, 0.0001]
+    best_accuracy = 0.
+    beat_C, beat_eta = None, None
+    for C in Cs:
+        for eta in etas:
+            print(f"C {C}, eta {eta}")
+            svm = SVM(eta=eta, C=C, niter=200, batch_size=5000, verbose=False)
+            train_loss, train_accuracy, test_loss, test_accuracy = svm.fit(x_train, y_train, x_test, y_test)
+            if test_accuracy > best_accuracy:
+                best_accuracy = test_accuracy
+                best_C = C
+                best_eta = eta
+    print(f"Best results with C {best_C}, eta {eta}: test {tes_accuracy}, train {train_accuracy}")
+    # to compute the gradient or loss before training, do the following:
+    #y_train_ova = svm.make_one_versus_all_labels(y_train, 10) # one-versus-all labels
+    #svm.w = np.zeros([401, 10])
+    #grad = svm.compute_gradient(x_train, y_train_ova)
+    #loss = svm.compute_loss(x_train, y_train_ova)
+
 
     # to infer after training, do the following:
-    y_inferred = svm.infer(x_test)
+    #y_inferred = svm.infer(x_test)
 
 
