@@ -170,7 +170,7 @@ if __name__ == "__main__":
     best_config = None
     best_predictions = None
 
-    for min_freq in [5, 10, 100]:
+    for min_freq in [1, 5, 10, 100]:
         config = f"min_df {min_freq}"
         print(f">>> {config}")
         y_prediction, score = main(X_train, X_val, y_train, y_val, X_test, min_freq)
