@@ -77,6 +77,11 @@ class NaiveBayesModel:
             y_prediction.append(pred)
         return y_prediction
 
+    # predict on X_val and compare to y_val to get a score
+    def get_accuracy(self, X_val, y_val):
+        predictions = self.predict(X_val)
+        return np.mean(predictions == y_val)
+
 
 def build_vocab(X, min_freq=None):
     """
@@ -138,20 +143,17 @@ def main(X_train, X_val, y_train, y_val, min_freq):
     vocab, X_train_sparse = build_vocab(X_train, min_freq=min_freq)
     model = NaiveBayesModel(vocab=vocab)
     model.train(X_train_sparse, y_train)
-    score = model.get_accuracy(X_val, y_val) #predict on X_val and compare to y_val to get a score
+    score = model.get_accuracy(X_val, y_val)
+    print("SCORE", score)
 
     y_prediction = model.predict(X_test)
     return y_prediction , score
 
-    #write_csv(y_prediction)
-
 
 if __name__ == "__main__":
-    main()
     import nltk
-    nltk.download('wordnet')
-    nltk.download('punkt')
-    nltk.download('stopwords')
+    #nltk.download('wordnet')
+    ##nltk.download('stopwords')
 
     seed = 42
 
@@ -172,7 +174,7 @@ if __name__ == "__main__":
     for min_freq in [1, 5, 10, 100]:
         config = f"min_df {min_freq}"
         print(f">>> {config}")
-        y_prediction, score = main(X_train, X_val, y_train, y_val,min_df=min_freq)
+        y_prediction, score = main(X_train, X_val, y_train, y_val, min_freq)
         if score > best_score:
             best_score = score
             best_config = config
@@ -180,6 +182,6 @@ if __name__ == "__main__":
 
     print(f"Best score: {best_score} \n  {best_config}")
 
-    write_csv(best_predictions)
+    #write_csv(best_predictions)
 
 # get accuracy now, then get accuracy with train test split
