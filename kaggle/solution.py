@@ -137,7 +137,7 @@ def preprocess(data, lem=True, stem=True, remove_stop_words=True, min_df=0.001):
 
 def get_data(set_):
     data = read_data(set_)
-    return preprocess(data)
+    return preprocess(data)  #TODO just saw this call to preprocess, need to remove this one, or the other call to preprocess currently in main()
 
 def write_csv(y_prediction):
     with open('submission.csv', 'w', newline='') as csvfile:
