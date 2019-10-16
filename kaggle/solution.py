@@ -47,10 +47,12 @@ class NaiveBayesModel:
 
     def _compute_class_cond_densities(self, X, y):
         densities = {}
+        dimension = X.shape[0]
+        print("dimension",dimension)
         for c in self._classes:
             # Get word count (+ 1 is for Laplace smoothing)
             word_count_for_c = np.sum(X[np.where(np.array(y) == c)], axis=0) + self.alpha
-            word_count = np.sum(X, axis=0) + self.alpha
+            word_count = np.sum(X, axis=0) + (self.alpha * dimension)
             densities[c] = word_count_for_c / word_count
         self._class_cond_densities = densities
 
@@ -171,8 +173,10 @@ if __name__ == "__main__":
     best_config = None
     best_predictions = None
 
-    for min_freq in [0, 1, 5, 10, 100]:
-        for alpha in [0.0001, 0.001, 0.01, 0.1, 1, 2, 100]:
+    #for min_freq in [0, 1, 5, 10, 100]:
+        #for alpha in [0.0001, 0.001, 0.01, 0.1, 1, 2, 100]:
+    for min_freq in [0]:
+        for alpha in [0.00001]:
             config = f"min_freq {min_freq}, smoothing_param {alpha}"
             print(f">>> {config}")
             y_prediction, score = main(X_train, X_val, y_train, y_val, X_test, min_freq, alpha)
