@@ -29,8 +29,9 @@ class BaselineModel:
 
 
 class NaiveBayesModel:
-    def __init__(self, vocab):
+    def __init__(self, vocab, alpha):
         self._vocab = vocab
+        self.alpha = alpha
         self._classes = None
         self._class_priors = None
         self._class_cond_densities = None
@@ -48,8 +49,8 @@ class NaiveBayesModel:
         densities = {}
         for c in self._classes:
             # Get word count (+ 1 is for Laplace smoothing)
-            word_count_for_c = np.sum(X[np.where(np.array(y) == c)], axis=0) + 1 # check if the +1 is a param
-            word_count = np.sum(X, axis=0) + 1
+            word_count_for_c = np.sum(X[np.where(np.array(y) == c)], axis=0) + self.alpha
+            word_count = np.sum(X, axis=0) + self.alpha
             densities[c] = word_count_for_c / word_count
         self._class_cond_densities = densities
 
@@ -138,10 +139,10 @@ def write_csv(y_prediction):
         for i, y in enumerate(y_prediction):
             writer.writerow([i, y])
 
-def main(X_train, X_val, y_train, y_val, X_test, min_freq):
+def main(X_train, X_val, y_train, y_val, X_test, min_freq, alpha):
 
     vocab, X_train_sparse = build_vocab(X_train, min_freq=min_freq)
-    model = NaiveBayesModel(vocab=vocab)
+    model = NaiveBayesModel(vocab=vocab, alpha=alpha)
     model.train(X_train_sparse, y_train)
     score = model.get_accuracy(X_val, y_val)
 
@@ -170,16 +171,17 @@ if __name__ == "__main__":
     best_config = None
     best_predictions = None
 
-    for min_freq in [1, 5, 10, 100]:
-        config = f"min_freq {min_freq}"
-        print(f">>> {config}")
-        y_prediction, score = main(X_train, X_val, y_train, y_val, X_test, min_freq)
-        if score > best_score:
-            best_score = score
-            best_config = config
-            best_predictions = y_prediction
+    for min_freq in [0, 1, 5, 10, 100]:
+        for alpha in [0.001, 0.01, 0.1, 1, 2, 100]:
+            config = f"min_freq {min_freq}, smoothing_param {alpha}"
+            print(f">>> {config}")
+            y_prediction, score = main(X_train, X_val, y_train, y_val, X_test, min_freq, alpha)
+            if score > best_score:
+                best_score = score
+                best_config = config
+                best_predictions = y_prediction
 
-    print(f"Best score: {best_score} \n  {best_config}")
+    print(f"Best score: {best_score} \n  Best config: {best_config}")
 
     write_csv(best_predictions)
 
