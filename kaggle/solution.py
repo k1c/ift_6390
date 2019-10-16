@@ -80,7 +80,7 @@ class NaiveBayesModel:
     # predict on X_val and compare to y_val to get a score
     def get_accuracy(self, X_val, y_val):
         predictions = self.predict(X_val)
-        return np.mean(predictions == y_val)
+        return np.mean(np.asarray(predictions) == np.asarray(y_val))
 
 
 def build_vocab(X, min_freq=None):
@@ -144,7 +144,6 @@ def main(X_train, X_val, y_train, y_val, X_test, min_freq):
     model = NaiveBayesModel(vocab=vocab)
     model.train(X_train_sparse, y_train)
     score = model.get_accuracy(X_val, y_val)
-    print("SCORE", score)
 
     y_prediction = model.predict(X_test)
     return y_prediction , score
@@ -182,6 +181,5 @@ if __name__ == "__main__":
 
     print(f"Best score: {best_score} \n  {best_config}")
 
-    #write_csv(best_predictions)
+    write_csv(best_predictions)
 
-# get accuracy now, then get accuracy with train test split
