@@ -138,7 +138,7 @@ def write_csv(y_prediction):
         for i, y in enumerate(y_prediction):
             writer.writerow([i, y])
 
-def main(X_train, X_val, y_train, y_val, min_freq):
+def main(X_train, X_val, y_train, y_val, X_test, min_freq):
 
     vocab, X_train_sparse = build_vocab(X_train, min_freq=min_freq)
     model = NaiveBayesModel(vocab=vocab)
@@ -171,10 +171,10 @@ if __name__ == "__main__":
     best_config = None
     best_predictions = None
 
-    for min_freq in [1, 5, 10, 100]:
+    for min_freq in [5, 10, 100]:
         config = f"min_df {min_freq}"
         print(f">>> {config}")
-        y_prediction, score = main(X_train, X_val, y_train, y_val, min_freq)
+        y_prediction, score = main(X_train, X_val, y_train, y_val, X_test, min_freq)
         if score > best_score:
             best_score = score
             best_config = config
