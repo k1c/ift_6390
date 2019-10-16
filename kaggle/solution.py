@@ -13,6 +13,7 @@ from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from nltk.stem import PorterStemmer
 from nltk.corpus import stopwords
+from sklearn.model_selection import train_test_split
 
 DATA_PATH = pathlib.Path("data/")
 
@@ -47,7 +48,7 @@ class NaiveBayesModel:
         densities = {}
         for c in self._classes:
             # Get word count (+ 1 is for Laplace smoothing)
-            word_count_for_c = np.sum(X[np.where(np.array(y) == c)], axis=0) + 1
+            word_count_for_c = np.sum(X[np.where(np.array(y) == c)], axis=0) + 1 # check if the +1 is a param
             word_count = np.sum(X, axis=0) + 1
             densities[c] = word_count_for_c / word_count
         self._class_cond_densities = densities
@@ -132,23 +133,21 @@ def write_csv(y_prediction):
         for i, y in enumerate(y_prediction):
             writer.writerow([i, y])
 
-def main():
-    X_train, y_train = read_data(set_="train")
-    X_test = read_data(set_="test")
+def main(X_train, X_val, y_train, y_val, min_freq):
 
-    X_train = preprocess(X_train, lem=True, stem=True)
-    X_test = preprocess(X_test, lem=True, stem=True)
-
-    vocab, X_train_sparse = build_vocab(X_train, min_freq=5)
+    vocab, X_train_sparse = build_vocab(X_train, min_freq=min_freq)
     model = NaiveBayesModel(vocab=vocab)
     model.train(X_train_sparse, y_train)
+    score = model.get_accuracy(X_val, y_val) #predict on X_val and compare to y_val to get a score
 
     y_prediction = model.predict(X_test)
+    return y_prediction , score
 
-    write_csv(y_prediction)
+    #write_csv(y_prediction)
 
 
 if __name__ == "__main__":
+    main()
     import nltk
     nltk.download('wordnet')
     nltk.download('punkt')
@@ -156,27 +155,31 @@ if __name__ == "__main__":
 
     seed = 42
 
+    X_train, y_train = read_data(set_="train")
+    X_test = read_data(set_="test")
+
+    X_train = preprocess(X_train, lem=True, stem=True)
+    X_test = preprocess(X_test, lem=True, stem=True)
+
+    # split train into train / val
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train,
+                                                        test_size=0.2,
+                                                        random_state=seed)
     best_score = 0.
     best_config = None
     best_predictions = None
 
-    for lem in [True, False]:
-        for stem in [True, False]:
-            for remove_stop_words in [True, False]:
-                for min_df in [0, 0.0001, 0.001, 0.01, 0.1]:
-                    config = f"lem {lem}, stem {stem}, remove_stop_words {remove_stop_words}, min_df {min_df}"
-                    print(f">>> {config}")
-                    y_prediction, score = main( seed=seed,
-                                                lem=lem,
-                                                stem=stem,
-                                                remove_stop_words=remove_stop_words,
-                                                min_df=min_df)
-                    if score > best_score:
-                        best_score = score
-                        best_config = config
-                        best_predictions = y_prediction
+    for min_freq in [1, 5, 10, 100]:
+        config = f"min_df {min_freq}"
+        print(f">>> {config}")
+        y_prediction, score = main(X_train, X_val, y_train, y_val,min_df=min_freq)
+        if score > best_score:
+            best_score = score
+            best_config = config
+            best_predictions = y_prediction
 
     print(f"Best score: {best_score} \n  {best_config}")
 
     write_csv(best_predictions)
 
+# get accuracy now, then get accuracy with train test split
