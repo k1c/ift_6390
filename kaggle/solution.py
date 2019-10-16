@@ -172,7 +172,7 @@ if __name__ == "__main__":
     best_predictions = None
 
     for min_freq in [0, 1, 5, 10, 100]:
-        for alpha in [0.001, 0.01, 0.1, 1, 2, 100]:
+        for alpha in [0.0001, 0.001, 0.01, 0.1, 1, 2, 100]:
             config = f"min_freq {min_freq}, smoothing_param {alpha}"
             print(f">>> {config}")
             y_prediction, score = main(X_train, X_val, y_train, y_val, X_test, min_freq, alpha)
