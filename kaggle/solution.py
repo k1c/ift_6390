@@ -9,11 +9,10 @@ import random
 import numpy as np
 import pathlib
 from scipy.sparse import csr_matrix
-from sklearn.feature_extraction.text import CountVectorizer
+from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from nltk.stem import PorterStemmer
 from nltk.corpus import stopwords
-from sklearn.model_selection import train_test_split
 
 DATA_PATH = pathlib.Path("data/")
 
@@ -29,81 +28,88 @@ class BaselineModel:
 
 
 class NaiveBayesModel:
-    def __init__(self):
-        self._vocab = None
+    def __init__(self, vocab):
+        self._vocab = vocab
         self._classes = None
         self._class_priors = None
         self._class_cond_densities = None
 
-    def _build_vocabulary(self, X_train):
-        """
-        Inspired from https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.html
-        """
-        indptr = [0]
-        indices = []
-        data = []
-        vocabulary = {}
-        for line in X_train:
-            for word in line.split(" "):
-                if not word:
-                    continue
-                index = vocabulary.setdefault(word, len(vocabulary))
-                indices.append(index)
-                data.append(1)
-            indptr.append(len(indices))
-        return vocabulary, csr_matrix((data, indices, indptr), dtype=int)
-
-# TODO model.train should take X_val and y_val and return validation scores
     def train(self, X_train, y_train):
-        vocab, X_train_sparse = self._build_vocabulary(X_train)
-        self._vocabulary = vocab
-
         self._compute_class_priors(y_train)
-        self._compute_class_cond_densities(X_train_sparse, y_train)
+        self._compute_class_cond_densities(X_train, y_train)
 
     def _compute_class_priors(self, y_train):
         classes, counts = np.unique(y_train, return_counts=True)
         self._classes = classes
         self._class_priors = {c: count / len(y_train) for c, count in zip(classes, counts)}
 
-    def _compute_class_cond_densities(self, X_train_sparse, y_train):
-        self._class_cond_densities = {}
+    def _compute_class_cond_densities(self, X, y):
+        densities = {}
         for c in self._classes:
-            c_indexes = np.where(np.array(y_train) == c)
-            x_cond_y = X_train_sparse[c_indexes]
-            word_count = np.sum(x_cond_y, axis=0)
-            word_freq = word_count / np.sum(word_count)
-            self._class_cond_densities[c] = word_freq
+            # Get word count (+ 1 is for Laplace smoothing)
+            word_count_for_c = np.sum(X[np.where(np.array(y) == c)], axis=0) + 1
+            word_count = np.sum(X, axis=0) + 1
+            densities[c] = word_count_for_c / word_count
+        self._class_cond_densities = densities
 
     def _compute_posterior(self, X, c):
         prior = self._class_priors[c]
-        p = 1.
-        for word in X.split(" "):
-            i = self._vocabulary.get(word)
-            if i is None:
+        p_cond = 1.
+        for word in X:
+            index = self._vocab.get(word)
+            # Word is not in vocab
+            if index is None:
                 continue
-            p *= self._class_cond_densities[c][0, i]
-        return p * prior
+            p_cond *= self._class_cond_densities[c][0, index]
+        return p_cond * prior
 
     def predict(self, X_test):
-        y_predictions = []
+        y_prediction = []
         for x in X_test:
             best_p = 0.
-            p_c = None
+            pred = None
             for c in self._classes:
-                p = self._compute_posterior(x, c)
-                if p > best_p:
-                    p_c = c
-            y_predictions.append(c)
-        return y_predictions
+                posterior_c = self._compute_posterior(x, c)
+                if posterior_c > best_p:
+                    best_p = posterior_c
+                    pred = c
+            y_prediction.append(pred)
+        return y_prediction
 
+
+def build_vocab(X, min_freq=None):
+    """
+    Inspired from https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.html
+    """
+    indptr = [0]
+    indices = []
+    data = []
+    vocab = {}
+    word_count = {}
+    for line in X:
+        for word in line:
+            if word not in word_count:
+                word_count[word] = 1
+            word_count[word] += 1
+            # Ignore infrequent words
+            if word_count[word] < min_freq:
+                continue
+            index = vocab.setdefault(word, len(vocab))
+            indices.append(index)
+            data.append(1)
+        indptr.append(len(indices))
+    matrix = csr_matrix((data, indices, indptr), dtype=int)
+    return vocab, matrix
 
 def read_data(set_):
     return np.load(DATA_PATH / f"data_{set_}.pkl", allow_pickle=True)
 
-def preprocess_line(line, analyzer, lem=True, stem=True, remove_stop_words=True):
-    # Tokenize
-    line = analyzer(line)
+def preprocess(data, lem=True, stem=True, remove_stop_words=True):
+    return [preprocess_line(line, lem, stem, remove_stop_words) for line in data]
+
+
+def preprocess_line(line, lem=True, stem=True, remove_stop_words=True):
+    line = word_tokenize(line)
 
     if lem:
         lemmatizer = WordNetLemmatizer()
@@ -115,29 +121,9 @@ def preprocess_line(line, analyzer, lem=True, stem=True, remove_stop_words=True)
 
     if remove_stop_words:
         stop_words = set(stopwords.words('english'))
-        data = [word for word in line if not word in stop_words]   #TODO check that data should be data and not line
+        line = [word for word in line if not word in stop_words]
+    return line
 
-    return " ".join(line)
-
-def preprocess(data, lem=True, stem=True, remove_stop_words=True, min_df=0.001):
-
-    vectorizer = CountVectorizer(min_df=min_df)
-    analyzer = vectorizer.build_analyzer()
-
-    # Preprocess line by line
-    data = [preprocess_line(line,
-                            analyzer,
-                            lem=lem,
-                            stem=stem,
-                            remove_stop_words=remove_stop_words)
-             for line in data]
-
-    # Strings to array
-    return vectorizer.fit_transform(data)
-
-def get_data(set_):
-    data = read_data(set_)
-    return preprocess(data)  #TODO just saw this call to preprocess, need to remove this one, or the other call to preprocess currently in main()
 
 def write_csv(y_prediction):
     with open('submission.csv', 'w', newline='') as csvfile:
@@ -146,26 +132,20 @@ def write_csv(y_prediction):
         for i, y in enumerate(y_prediction):
             writer.writerow([i, y])
 
+def main():
+    X_train, y_train = read_data(set_="train")
+    X_test = read_data(set_="test")
 
-def main(seed=42, lem=True, stem=True, remove_stop_words=True, min_df=0.0012):
-    X_train, y_train = get_data(set_="train")
-    X_test = get_data(set_="test")
+    X_train = preprocess(X_train, lem=True, stem=True)
+    X_test = preprocess(X_test, lem=True, stem=True)
 
-    model = NaiveBayesModel()
-
-    # pre_process features
-    X = preprocess(X_train, lem, stem, remove_stop_words, min_df)
-
-    # split train into train / val
-    X_train, X_val, y_train, y_val = train_test_split(X, y_train,
-                                                        test_size=0.2,
-                                                        random_state=seed)
-
-    val_score = model.train(X_train, y_train) # TODO model.train should take X_val and y_val and return validation scores
+    vocab, X_train_sparse = build_vocab(X_train, min_freq=5)
+    model = NaiveBayesModel(vocab=vocab)
+    model.train(X_train_sparse, y_train)
 
     y_prediction = model.predict(X_test)
 
-    return y_prediction, val_score
+    write_csv(y_prediction)
 
 
 if __name__ == "__main__":
