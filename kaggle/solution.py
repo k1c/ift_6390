@@ -14,6 +14,13 @@ from nltk.stem import WordNetLemmatizer
 from nltk.stem import PorterStemmer
 from nltk.corpus import stopwords
 from sklearn.model_selection import train_test_split
+import nltk
+from nltk.tokenize import RegexpTokenizer
+from nltk.stem import WordNetLemmatizer, PorterStemmer
+from nltk.corpus import stopwords
+import re
+from nltk.tokenize import RegexpTokenizer
+from sklearn.feature_extraction.text import CountVectorizer
 
 DATA_PATH = pathlib.Path("data/")
 
@@ -49,8 +56,8 @@ class NaiveBayesModel:
         densities = {}
         dimension = X.shape[0]
         vocab_dimension = len(self._vocab)
-        print("dimension",dimension)
-        print("vocab_dimension",vocab_dimension)
+        print("dimension", dimension)
+        print("vocab_dimension", vocab_dimension)
         for c in self._classes:
             # Get word count (+ 1 is for Laplace smoothing)
             word_count_for_c = np.sum(X[np.where(np.array(y) == c)], axis=0) + self.alpha
@@ -88,6 +95,23 @@ class NaiveBayesModel:
         return np.mean(np.asarray(predictions) == np.asarray(y_val))
 
 
+def build_vocab_cv(X, ngram_range=(1, 1), min_df=1, max_features=None):
+    """
+    X should look like this:
+    X = [
+        'This is the first document.',
+        'This document is the second document.',
+        'And this is the third one.',
+        'Is this the first document?'
+    ]
+    """
+    X = [','.join(x) for x in X]  # convert list of list of strings to list of strings
+    vectorizer = CountVectorizer(ngram_range=ngram_range, min_df=min_df, max_features=max_features)
+    x_train_sparse = vectorizer.fit_transform(X)
+    vocab = vectorizer.vocabulary_
+    return vectorizer, vocab, x_train_sparse
+
+
 def build_vocab(X, min_freq=None):
     """
     Inspired from https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.html
@@ -100,7 +124,7 @@ def build_vocab(X, min_freq=None):
     for line in X:
         for word in line:
             if word not in word_count:
-                word_count[word] = 1
+                word_count[word] = 0
             word_count[word] += 1
             # Ignore infrequent words
             if word_count[word] < min_freq:
@@ -112,6 +136,7 @@ def build_vocab(X, min_freq=None):
     matrix = csr_matrix((data, indices, indptr), dtype=int)
     return vocab, matrix
 
+
 def read_data(set_):
     return np.load(DATA_PATH / f"data_{set_}.pkl", allow_pickle=True)
 
@@ -120,19 +145,38 @@ def preprocess(data, lem=True, stem=True, remove_stop_words=True):
 
 
 def preprocess_line(line, lem=True, stem=True, remove_stop_words=True):
-    line = word_tokenize(line)
+    # remove punctuation with tokenizer
+    tokenizer = RegexpTokenizer(r'\w+')
 
-    if lem:
-        lemmatizer = WordNetLemmatizer()
-        line = [lemmatizer.lemmatize(word)for word in line]
+    # lower sent
+    line = line.lower()
+
+    line = line.replace('{html}', "")
+
+    # remove whitespace
+    cleanr = re.compile('<.*?>')
+    line = re.sub(cleanr, '', line)
+
+    # remove any URL
+    line = re.sub(r'^https?:\/\/.*[\r\n]*', '', line)
+
+    # remove nubers
+    line = re.sub('[0-9]+', '', line)
+
+    line = tokenizer.tokenize(line)
+
+    if remove_stop_words:
+        stop_words = set(stopwords.words('english'))
+        line = [word for word in line if not word in stop_words]
 
     if stem:
         stemmer = PorterStemmer()
         line = [stemmer.stem(word) for word in line]
 
-    if remove_stop_words:
-        stop_words = set(stopwords.words('english'))
-        line = [word for word in line if not word in stop_words]
+    if lem:
+        lemmatizer = WordNetLemmatizer()
+        line = [lemmatizer.lemmatize(word) for word in line]
+
     return line
 
 
@@ -143,20 +187,30 @@ def write_csv(y_prediction):
         for i, y in enumerate(y_prediction):
             writer.writerow([i, y])
 
-def main(X_train, X_val, y_train, y_val, X_test, min_freq, alpha):
 
-    vocab, X_train_sparse = build_vocab(X_train, min_freq=min_freq)
+def main(X_train, y_train, X_test, lem, stem, remove_stop_words, min_freq, alpha, grams):
+    X_train = preprocess(X_train, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
+    X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
+
+    # split train into train / val
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=seed)
+
+    # vocab, X_train_sparse = build_vocab(X_train, min_freq=min_freq)
+    vectorizer, vocab, X_train_sparse = build_vocab_cv(X_train, ngram_range=grams, min_df=min_freq)
+
     model = NaiveBayesModel(vocab=vocab, alpha=alpha)
     model.train(X_train_sparse, y_train)
     score = model.get_accuracy(X_val, y_val)
 
+    # X_test = [','.join(x) for x in X_test] # convert list of list of strings to list of strings
+    # test_x_sparse = vectorizer.transform(X_test)
     y_prediction = model.predict(X_test)
-    return y_prediction , score
+    return y_prediction, score
 
 
 if __name__ == "__main__":
     import nltk
-    #nltk.download('wordnet')
+    # nltk.download('wordnet')
     ##nltk.download('stopwords')
 
     seed = 42
@@ -164,28 +218,25 @@ if __name__ == "__main__":
     X_train, y_train = read_data(set_="train")
     X_test = read_data(set_="test")
 
-    X_train = preprocess(X_train, lem=True, stem=True)
-    X_test = preprocess(X_test, lem=True, stem=True)
-
-    # split train into train / val
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train,
-                                                        test_size=0.2,
-                                                        random_state=seed)
     best_score = 0.
     best_config = None
     best_predictions = None
 
-    #for min_freq in [0, 1, 5, 10, 100]:
-        #for alpha in [0.0001, 0.001, 0.01, 0.1, 1, 2, 100]:
-    for min_freq in [0]:
-        for alpha in [0.0001]:
-            config = f"min_freq {min_freq}, smoothing_param {alpha}"
-            print(f">>> {config}")
-            y_prediction, score = main(X_train, X_val, y_train, y_val, X_test, min_freq, alpha)
-            if score > best_score:
-                best_score = score
-                best_config = config
-                best_predictions = y_prediction
+    for lem in [False]:  # [True, False]
+        for stem in [False]:  # [True, False]
+            for remove_stop_words in [True]:  # [True, False]
+                for min_freq in [0]:  # [0,1]
+                    for alpha in [0.01]:  # [0.0001, 0.001, 0.01]
+                        for grams in [(1, 1)]: # [(1,1),(1,2)]
+                            config = f"min_freq {min_freq}, smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, Ngrams {grams}"
+                            print(f">>> {config}")
+                            y_prediction, score = main(X_train, y_train, X_test, lem, stem, remove_stop_words, min_freq,
+                                                       alpha, grams)
+                            print("SCORE", score)
+                            if score > best_score:
+                                best_score = score
+                                best_config = config
+                                best_predictions = y_prediction
 
     print(f"Best score: {best_score} \n  Best config: {best_config}")
 
