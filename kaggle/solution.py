@@ -9,17 +9,13 @@ import random
 import numpy as np
 import pathlib
 from scipy.sparse import csr_matrix
-from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from nltk.stem import PorterStemmer
 from nltk.corpus import stopwords
 from sklearn.model_selection import train_test_split
 import nltk
 from nltk.tokenize import RegexpTokenizer
-from nltk.stem import WordNetLemmatizer, PorterStemmer
-from nltk.corpus import stopwords
 import re
-from nltk.tokenize import RegexpTokenizer
 from sklearn.feature_extraction.text import CountVectorizer
 
 DATA_PATH = pathlib.Path("data/")
@@ -59,9 +55,9 @@ class NaiveBayesModel:
         print("dimension", dimension)
         print("vocab_dimension", vocab_dimension)
         for c in self._classes:
-            # Get word count (+ 1 is for Laplace smoothing)
+            # Get word count (+ alpha is for Laplace smoothing)
             word_count_for_c = np.sum(X[np.where(np.array(y) == c)], axis=0) + self.alpha
-            word_count = np.sum(X, axis=0) + (self.alpha * vocab_dimension)
+            word_count = np.sum(word_count_for_c) + (self.alpha * vocab_dimension)
             densities[c] = word_count_for_c / word_count
         self._class_cond_densities = densities
 
@@ -193,10 +189,10 @@ def main(X_train, y_train, X_test, lem, stem, remove_stop_words, min_freq, alpha
     X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
 
     # split train into train / val
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=seed)
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
 
     # vocab, X_train_sparse = build_vocab(X_train, min_freq=min_freq)
-    vectorizer, vocab, X_train_sparse = build_vocab_cv(X_train, ngram_range=grams, min_df=min_freq)
+    vocab, X_train_sparse = build_vocab(X_train, min_freq=min_freq)
 
     model = NaiveBayesModel(vocab=vocab, alpha=alpha)
     model.train(X_train_sparse, y_train)
@@ -213,8 +209,6 @@ if __name__ == "__main__":
     # nltk.download('wordnet')
     ##nltk.download('stopwords')
 
-    seed = 42
-
     X_train, y_train = read_data(set_="train")
     X_test = read_data(set_="test")
 
@@ -225,8 +219,8 @@ if __name__ == "__main__":
     for lem in [False]:  # [True, False]
         for stem in [False]:  # [True, False]
             for remove_stop_words in [True]:  # [True, False]
-                for min_freq in [0]:  # [0,1]
-                    for alpha in [0.01]:  # [0.0001, 0.001, 0.01]
+                for min_freq in [0, 1, 5, 10]:  # [0,1]
+                    for alpha in [0.01, 0.1, 0.5, 1]:
                         for grams in [(1, 1)]: # [(1,1),(1,2)]
                             config = f"min_freq {min_freq}, smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, Ngrams {grams}"
                             print(f">>> {config}")
