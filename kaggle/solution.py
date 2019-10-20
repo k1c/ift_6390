@@ -16,10 +16,8 @@ from sklearn.model_selection import train_test_split
 from nltk.tokenize import RegexpTokenizer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 import pandas as pd
-import re
 
 DATA_PATH = pathlib.Path("data/")
-
 
 class BaselineModel:
     def __init__(self):
