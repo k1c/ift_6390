@@ -9,14 +9,14 @@ import random
 import numpy as np
 import pathlib
 from scipy.sparse import csr_matrix
+import nltk
 from nltk.stem import WordNetLemmatizer
 from nltk.stem import PorterStemmer
 from nltk.corpus import stopwords
 from sklearn.model_selection import train_test_split
-import nltk
 from nltk.tokenize import RegexpTokenizer
-import re
-from sklearn.feature_extraction.text import CountVectorizer
+import pandas as pd
+import array
 
 DATA_PATH = pathlib.Path("data/")
 
@@ -91,73 +91,145 @@ class NaiveBayesModel:
         return np.mean(np.asarray(predictions) == np.asarray(y_val))
 
 
-def build_vocab_cv(X, ngram_range=(1, 1), min_df=1, max_features=None):
-    """
-    X should look like this:
-    X = [
-        'This is the first document.',
-        'This document is the second document.',
-        'And this is the third one.',
-        'Is this the first document?'
-    ]
-    """
-    X = [','.join(x) for x in X]  # convert list of list of strings to list of strings
-    vectorizer = CountVectorizer(ngram_range=ngram_range, min_df=min_df, max_features=max_features)
-    x_train_sparse = vectorizer.fit_transform(X)
-    vocab = vectorizer.vocabulary_
-    return vectorizer, vocab, x_train_sparse
+# source: https://towardsdatascience.com/natural-language-processing-feature-engineering-using-tf-idf-e8b9d00e7e76
+# TF IDF is TF multiplied by IDF
+def computeTFIDF(tfBagOfWords, idfs):
+    tfidf = {}
+    for word, val in tfBagOfWords.items():
+        tfidf[word] = val * idfs[word]
+    return tfidf
 
 
-def build_vocab(X, min_freq=None):
+# source: https://towardsdatascience.com/natural-language-processing-feature-engineering-using-tf-idf-e8b9d00e7e76
+#The log of the number of documents divided by the number of documents that contain the word
+def computeIDF(documents):
+    import math
+    N = len(documents)
+
+    idfDict = dict.fromkeys(documents[0].keys(), 0)
+    for document in documents:
+        for word, val in document.items():
+            if val > 0:
+                idfDict[word] += 1
+
+    for word, val in idfDict.items():
+        idfDict[word] = math.log(N / float(val))
+    return idfDict
+
+
+# source: https://towardsdatascience.com/natural-language-processing-feature-engineering-using-tf-idf-e8b9d00e7e76
+#The number of times a word appears in a document divded by the total number of words in the document.
+def computeTF(wordDict, bagOfWords):
+    tfDict = {}
+    bagOfWordsCount = len(bagOfWords)
+    for word, count in wordDict.items():
+        tfDict[word] = count / float(bagOfWordsCount)
+    return tfDict
+
+
+# source: https://towardsdatascience.com/natural-language-processing-feature-engineering-using-tf-idf-e8b9d00e7e76
+def build_vocab_tfidf(X_train, subreddits, num_remove):  # X_train is a list of strings
+    tokenizer = RegexpTokenizer(r"(?u)\b\w\w+\b")
+
+    bag_of_words = list()
+    for subreddit in subreddits:
+        bag_of_words.append(tokenizer.tokenize(subreddit))
+
+    uniqueWords = set().union(*bag_of_words)
+
+    num_of_words = list()
+    for bow in bag_of_words:
+        numOfWords = dict.fromkeys(uniqueWords, 0)
+        for word in bow:
+            numOfWords[word] += 1
+        num_of_words.append(numOfWords)
+
+    # Calculate Term Frequency (TF) per class
+    tf = list()
+    for i in range(len(num_of_words)):
+        tf.append(computeTF(num_of_words[i], bag_of_words[i]))
+
+    # Calculate Inverse Data Frequency (IDF)
+    idfs = computeIDF(num_of_words)
+
+    # Calculate TF IDF
+    tfidf = list()
+    for i in range(len(tf)):
+        tfidf.append(computeTFIDF(tf[i], idfs))
+
+    df = pd.DataFrame(tfidf)
+
+    # We built a confusion matrix and saw that words in 'conspiracy' subreddit are often misclassified
+    # This may be due to the fact that these words are shared amongst other classes at a high frequency
+    # Therefore perform TFIDF and remove top-X number of words sorted by 'conspiracy' class (index 13)
+    conspiracy_df = df.sort_values(by=13, axis=1, ascending=False, inplace=False)  # sorted by top conspiracy words
+    conspiracy_df.drop(conspiracy_df.columns[:num_remove], axis=1, inplace=True)
+
+    X_train = [' '.join(x) for x in X_train]  # convert list of list of strings to list of strings
+    vocab = {w: i for i, w in enumerate(list(conspiracy_df.columns.values))}
+    x_train_sparse = make_sparse_matrix(X_train, vocab)
+    return vocab, x_train_sparse
+
+
+# source: https://github.com/scikit-learn/scikit-learn/blob/1495f6924/sklearn/feature_extraction/text.py#L952
+def _make_int_array():
+    """Construct an array.array of a type suitable for scipy.sparse indices."""
+    return array.array(str("i"))
+
+
+# inspired by source: https://github.com/scikit-learn/scikit-learn/blob/1495f6924/sklearn/feature_extraction/text.py#L952
+def make_sparse_matrix(sentences, vocab):
+    """Create sparse feature matrix
     """
-    Inspired from https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.html
-    """
-    indptr = [0]
-    indices = []
-    data = []
-    vocab = {}
-    word_count = {}
-    for line in X:
-        for word in line:
-            if word not in word_count:
-                word_count[word] = 0
-            word_count[word] += 1
-            # Ignore infrequent words
-            if word_count[word] < min_freq:
+    vocabulary = vocab
+
+    tokenizer = RegexpTokenizer(r'\w+')
+
+    j_indices = []
+    indptr = []
+
+    values = _make_int_array()
+    indptr.append(0)
+    for doc in sentences:  # looping over sentences
+        feature_counter = {}
+        for feature in tokenizer.tokenize(doc):
+            try:
+                feature_idx = vocabulary[feature]
+                if feature_idx not in feature_counter:
+                    feature_counter[feature_idx] = 1
+                else:
+                    feature_counter[feature_idx] += 1
+            except KeyError:
+                # Ignore out-of-vocabulary items for fixed_vocab=True
                 continue
-            index = vocab.setdefault(word, len(vocab))
-            indices.append(index)
-            data.append(1)
-        indptr.append(len(indices))
-    matrix = csr_matrix((data, indices, indptr), dtype=int)
-    return vocab, matrix
+
+        j_indices.extend(feature_counter.keys())
+        values.extend(feature_counter.values())
+        indptr.append(len(j_indices))
+
+    indices_dtype = np.int32
+    j_indices = np.asarray(j_indices, dtype=indices_dtype)
+    indptr = np.asarray(indptr, dtype=indices_dtype)
+    values = np.frombuffer(values, dtype=np.intc)
+
+    X = csr_matrix((values, j_indices, indptr), shape=(len(indptr) - 1, len(vocabulary)), dtype=int)
+    X.sort_indices()
+    return X
 
 
 def read_data(set_):
     return np.load(DATA_PATH / f"data_{set_}.pkl", allow_pickle=True)
+
 
 def preprocess(data, lem=True, stem=True, remove_stop_words=True):
     return [preprocess_line(line, lem, stem, remove_stop_words) for line in data]
 
 
 def preprocess_line(line, lem=True, stem=True, remove_stop_words=True):
-    # remove punctuation with tokenizer
-    tokenizer = RegexpTokenizer(r'\w+')
+    tokenizer = RegexpTokenizer(r"(?u)\b\w\w+\b")
 
     # lower sent
     line = line.lower()
-
-    line = line.replace('{html}', "")
-
-    # remove whitespace
-    cleanr = re.compile('<.*?>')
-    line = re.sub(cleanr, '', line)
-
-    # remove any URL
-    line = re.sub(r'^https?:\/\/.*[\r\n]*', '', line)
-
-    # remove nubers
-    line = re.sub('[0-9]+', '', line)
 
     line = tokenizer.tokenize(line)
 
@@ -165,13 +237,13 @@ def preprocess_line(line, lem=True, stem=True, remove_stop_words=True):
         stop_words = set(stopwords.words('english'))
         line = [word for word in line if not word in stop_words]
 
-    if stem:
-        stemmer = PorterStemmer()
-        line = [stemmer.stem(word) for word in line]
-
     if lem:
         lemmatizer = WordNetLemmatizer()
         line = [lemmatizer.lemmatize(word) for word in line]
+
+    if stem:
+        stemmer = PorterStemmer()
+        line = [stemmer.stem(word) for word in line]
 
     return line
 
@@ -184,55 +256,89 @@ def write_csv(y_prediction):
             writer.writerow([i, y])
 
 
-def main(X_train, y_train, X_test, lem, stem, remove_stop_words, min_freq, alpha, grams):
+def get_text(df, label):
+    return df[df['labels'] == label]['text']
+
+
+# subreddits is a list of length 20 (20 classes)
+# each element is a string and represents all the text from a single subreddit
+def get_subreddits(df, lem, stem, remove_stop_words):
+    labels = df.labels.unique().tolist()
+    df_text_per_class = list()  # text_per_class is a list of strings
+    for label in labels:
+        df_text_per_class.append(get_text(df, label))
+
+    text_per_class = list()
+    for i in range(len(df_text_per_class)):
+        text_per_class.append(df_text_per_class[i].tolist())
+
+    # clean vocab using same params as training data
+    text_per_class = [preprocess(text_per_class[i], lem, stem, remove_stop_words) for i in range(len(text_per_class))]
+
+    subreddits = list()
+    for i in range(len(text_per_class)):
+        X = [' '.join(x) for x in text_per_class[i]]  # convert list of list of strings to list of strings
+        X = " ".join(X)
+        subreddits.append(X)
+    return subreddits
+
+
+def main(is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words, alpha, num_remove):
+    # build pandas dataframe to gather text from subreddits together
+    df_X = pd.DataFrame(X_train, columns=['text'])
+    df_Y = pd.DataFrame(y_train, columns=['labels'])
+    df = pd.concat([df_X, df_Y], axis=1)
+
     X_train = preprocess(X_train, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
     X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
 
-    # split train into train / val
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+    if is_train:
+        # split train into train / val
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
 
-    # vocab, X_train_sparse = build_vocab(X_train, min_freq=min_freq)
-    vocab, X_train_sparse = build_vocab(X_train, min_freq=min_freq)
+    subreddits = get_subreddits(df, lem, stem, remove_stop_words)
+
+    vocab, X_train_sparse = build_vocab_tfidf(X_train, subreddits, num_remove)
 
     model = NaiveBayesModel(vocab=vocab, alpha=alpha)
     model.train(X_train_sparse, y_train)
-    score = model.get_accuracy(X_val, y_val)
+    if is_train:
+        score = model.get_accuracy(X_val, y_val)
 
-    # X_test = [','.join(x) for x in X_test] # convert list of list of strings to list of strings
-    # test_x_sparse = vectorizer.transform(X_test)
     y_prediction = model.predict(X_test)
     return y_prediction, score
 
 
 if __name__ == "__main__":
-    import nltk
-    # nltk.download('wordnet')
-    ##nltk.download('stopwords')
+    nltk.download('wordnet')
+    nltk.download('stopwords')
+    nltk.download('punkt')
 
     X_train, y_train = read_data(set_="train")
     X_test = read_data(set_="test")
 
+    is_train = True
+
     best_score = 0.
+    score = 0.
     best_config = None
     best_predictions = None
-
-    for lem in [False]:  # [True, False]
-        for stem in [False]:  # [True, False]
-            for remove_stop_words in [True]:  # [True, False]
-                for min_freq in [0, 1, 5, 10]:  # [0,1]
-                    for alpha in [0.01, 0.1, 0.5, 1]:
-                        for grams in [(1, 1)]: # [(1,1),(1,2)]
-                            config = f"min_freq {min_freq}, smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, Ngrams {grams}"
-                            print(f">>> {config}")
-                            y_prediction, score = main(X_train, y_train, X_test, lem, stem, remove_stop_words, min_freq,
-                                                       alpha, grams)
-                            print("SCORE", score)
-                            if score > best_score:
-                                best_score = score
-                                best_config = config
-                                best_predictions = y_prediction
-
-    print(f"Best score: {best_score} \n  Best config: {best_config}")
-
-    write_csv(best_predictions)
+    for lem in [True, False]:  # HP_Search params: [True, False]
+        for stem in [True, False]:  # HP_Search params: [True, False]
+            for remove_stop_words in [True]:  # HP_Search params: [True, False]
+                for alpha in [0.1, 0.01]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
+                    for num_remove in [0, 15, 45, 65]:  # HP_Search params: [0, 15, 45, 55, 150, 500]
+                        config = f"smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_remove {num_remove}"
+                        print(f">>> {config}")
+                        y_prediction, score = main(is_train, score, X_train, y_train, X_test, lem, stem,
+                                                   remove_stop_words, alpha, num_remove)
+                        print("SCORE", score)
+                        if score > best_score:
+                            best_score = score
+                            best_config = config
+                            best_predictions = y_prediction
+                            print("BEST SCORE", best_score)
+                            print("BEST CONFIG", best_config)
+    if not is_train:
+        write_csv(best_predictions)
 
