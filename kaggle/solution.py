@@ -268,9 +268,12 @@ if __name__ == "__main__":
                             print("SCORE", score)
                             if score > best_score:
                                 best_score = score
-                                print("BEST SCORE", best_score)
                                 best_config = config
                                 best_predictions = y_prediction
+                                print("BEST SCORE", best_score)
+                                print("BEST CONFIG", best_config)
+
+
     if not is_train:
         write_csv(best_predictions)
 
