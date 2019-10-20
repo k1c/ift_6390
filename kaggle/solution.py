@@ -164,19 +164,6 @@ def preprocess_line(line, lem=True, stem=True, remove_stop_words=True):
     # lower sent
     line = line.lower()
 
-    # replace HTML
-    line = line.replace('{html}', "<HTML>")
-
-    # remove whitespace
-    cleanr = re.compile('<.*?>')
-    line = re.sub(cleanr, '', line)
-
-    # replace any URL
-    line = re.sub(r'^https?:\/\/.*[\r\n]*', '<URL>', line)
-
-    # remove numbers
-    # line = re.sub('[0-9]+', '', line)
-
     line = tokenizer.tokenize(line)
 
     if remove_stop_words:
