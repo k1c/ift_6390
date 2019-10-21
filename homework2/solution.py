@@ -17,14 +17,14 @@ class SVM:
         return ova
 
     def compute_loss(self, x, y):
-        """underunderunder
+        """
 	x : numpy array of shape (minibatch size, 401)
 	y : numpy array of shape (minibatch size, 10)
 	returns : float
 	"""
         scores = x.dot(self.w)
-        margins = np.maximum(0, 1 - np.multiply(scores, y))
-        loss = np.mean(np.sum(margins, axis=1))
+        margins = np.multiply(scores, y)
+        loss = np.mean(np.sum(np.maximum(0, 1 - margins), axis=1))
         loss = self.C * loss
         # Computes de regularization term
         loss += 0.5 * np.sum(np.linalg.norm(self.w, ord=2, axis=0))
@@ -37,9 +37,14 @@ class SVM:
 	returns : numpy array of shape (401, 10)
 	"""
         scores = x.dot(self.w)
-        active = (np.multiply(scores, y) < 1).astype(float)
-        grad = np.dot(-x.T, np.multiply(y, active))
-        grad = 2 * self.C * grad / y.shape[0]
+        margins = np.multiply(scores, y)
+        # Derivative term
+        active = (margins < 1).astype(float)
+        deriv = np.dot(-x.T, np.multiply(y, active))
+        # Loss term
+        loss = np.mean(np.maximum(0, 1 - margins))
+        # Gradient - 2 * C * loss * deriv / n
+        grad = 2 * self.C * loss * deriv / y.shape[0]
         # Regularization term
         grad += self.w
         return grad
@@ -130,7 +135,7 @@ if __name__ == "__main__":
     for C in Cs:
         for eta in etas:
             print(f"C {C}, eta {eta}")
-            svm = SVM(eta=eta, C=C, niter=200, batch_size=5000, verbose=False)
+            svm = SVM(eta=eta, C=C, niter=200, batch_size=5000, verbose=True)
             train_loss, train_accuracy, test_loss, test_accuracy = svm.fit(x_train, y_train, x_test, y_test)
             if test_accuracy > best_accuracy:
                 best_accuracy = test_accuracy
