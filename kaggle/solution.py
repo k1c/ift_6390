@@ -310,10 +310,13 @@ def main(is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words
 
     model = NaiveBayesModel(vocab=vocab, alpha=alpha)
     model.train(X_train_sparse, y_train)
+    y_prediction = model.predict(X_test)
+
     if is_train:
         score = model.get_accuracy(X_val, y_val)
+    else:
+        write_csv(y_prediction)
 
-    y_prediction = model.predict(X_test)
     return y_prediction, score
 
 
@@ -325,7 +328,7 @@ if __name__ == "__main__":
     X_train, y_train = read_data(set_="train")
     X_test = read_data(set_="test")
 
-    is_train = True
+    is_train = False
 
     best_score = 0.
     score = 0.
@@ -335,7 +338,7 @@ if __name__ == "__main__":
         for stem in [True]:  # HP_Search params: [True, False]
             for remove_stop_words in [True]:  # HP_Search params: [True, False]
                 for alpha in [0.1]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
-                    for num_keep in [55000]:  # HP_Search params: [40000,50000,540000,55000,55350]
+                    for num_keep in [55350]:  # HP_Search params: [40000,50000,540000,55000,55350]
                         config = f"smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_keep {num_keep}"
                         print(f">>> {config}")
                         y_prediction, score = main(is_train, score, X_train, y_train, X_test, lem, stem,
@@ -347,6 +350,5 @@ if __name__ == "__main__":
                             best_predictions = y_prediction
                             print("BEST SCORE", best_score)
                             print("BEST CONFIG", best_config)
-    if not is_train:
-        write_csv(best_predictions)
+
 
