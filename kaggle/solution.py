@@ -128,7 +128,7 @@ def computeTF(wordDict, bagOfWords):
 
 
 # source: https://towardsdatascience.com/natural-language-processing-feature-engineering-using-tf-idf-e8b9d00e7e76
-def build_vocab_tfidf(X_train, subreddits, num_remove):  # X_train is a list of strings
+def build_vocab_tfidf(X_train, subreddits, num_keep):  # X_train is a list of strings
     tokenizer = RegexpTokenizer(r"(?u)\b\w\w+\b")
 
     bag_of_words = list()
@@ -159,14 +159,22 @@ def build_vocab_tfidf(X_train, subreddits, num_remove):  # X_train is a list of 
 
     df = pd.DataFrame(tfidf)
 
+    # sort each row (aka each class) by descending order and keep the top num_keep
+    total_vocab = []
+    num_index_rows = len(df.index.values.tolist())
+    for i in range(num_index_rows):
+        total_vocab.extend(df.sort_values(by=i, axis=1, ascending=False).columns.values.tolist()[:num_keep])
+
+    total_vocab = list(set(total_vocab))
+
     # We built a confusion matrix and saw that words in 'conspiracy' subreddit are often misclassified
     # This may be due to the fact that these words are shared amongst other classes at a high frequency
     # Therefore perform TFIDF and remove top-X number of words sorted by 'conspiracy' class (index 13)
-    conspiracy_df = df.sort_values(by=13, axis=1, ascending=False, inplace=False)  # sorted by top conspiracy words
-    conspiracy_df.drop(conspiracy_df.columns[:num_remove], axis=1, inplace=True)
+    #conspiracy_df = df.sort_values(by=13, axis=1, ascending=False, inplace=False)  # sorted by top conspiracy words
+    #conspiracy_df.drop(conspiracy_df.columns[:num_keep].values, axis=1, inplace=True)
 
     X_train = [' '.join(x) for x in X_train]  # convert list of list of strings to list of strings
-    vocab = {w: i for i, w in enumerate(list(conspiracy_df.columns.values))}
+    vocab = {w: i for i, w in enumerate(total_vocab)}
     x_train_sparse = make_sparse_matrix(X_train, vocab)
     return vocab, x_train_sparse
 
@@ -283,7 +291,7 @@ def get_subreddits(df, lem, stem, remove_stop_words):
     return subreddits
 
 
-def main(is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words, alpha, num_remove):
+def main(is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words, alpha, num_keep):
     # build pandas dataframe to gather text from subreddits together
     df_X = pd.DataFrame(X_train, columns=['text'])
     df_Y = pd.DataFrame(y_train, columns=['labels'])
@@ -298,7 +306,7 @@ def main(is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words
 
     subreddits = get_subreddits(df, lem, stem, remove_stop_words)
 
-    vocab, X_train_sparse = build_vocab_tfidf(X_train, subreddits, num_remove)
+    vocab, X_train_sparse = build_vocab_tfidf(X_train, subreddits, num_keep)
 
     model = NaiveBayesModel(vocab=vocab, alpha=alpha)
     model.train(X_train_sparse, y_train)
@@ -323,15 +331,15 @@ if __name__ == "__main__":
     score = 0.
     best_config = None
     best_predictions = None
-    for lem in [True, False]:  # HP_Search params: [True, False]
-        for stem in [True, False]:  # HP_Search params: [True, False]
+    for lem in [False]:  # HP_Search params: [True, False]
+        for stem in [True]:  # HP_Search params: [True, False]
             for remove_stop_words in [True]:  # HP_Search params: [True, False]
-                for alpha in [0.1, 0.01]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
-                    for num_remove in [0, 15, 45, 65]:  # HP_Search params: [0, 15, 45, 55, 150, 500]
-                        config = f"smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_remove {num_remove}"
+                for alpha in [0.1]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
+                    for num_keep in [55000]:  # HP_Search params: [0, 15, 45, 55, 150, 500]
+                        config = f"smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_keep {num_keep}"
                         print(f">>> {config}")
                         y_prediction, score = main(is_train, score, X_train, y_train, X_test, lem, stem,
-                                                   remove_stop_words, alpha, num_remove)
+                                                   remove_stop_words, alpha, num_keep)
                         print("SCORE", score)
                         if score > best_score:
                             best_score = score
