@@ -37,15 +37,15 @@ class SVM:
 	returns : numpy array of shape (401, 10)
 	"""
         scores = x.dot(self.w)
+        # margin = <wj,(xi,yi)>
         margins = np.multiply(scores, y)
-        # Derivative term
+        # Indicator
         active = (margins < 1).astype(float)
-        deriv = np.dot(-x.T, np.multiply(y, active))
-        # Loss term
-        loss = np.mean(np.maximum(0, 1 - margins))
-        # Gradient - 2 * C * loss * deriv / n
-        grad = 2 * self.C * loss * deriv / y.shape[0]
-        # Regularization term
+        # plain gradients
+        grad = np.dot(x.T, np.multiply(1 - margins,  -np.multiply(y, active)))
+        # grad = 2 * C * grad / n
+        grad = 2 * self.C * grad / y.shape[0]
+        # add the regularization term
         grad += self.w
         return grad
 
