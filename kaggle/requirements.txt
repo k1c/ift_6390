@@ -3,3 +3,4 @@ pathlib
 scipy
 nltk
 pandas
+sklearn
