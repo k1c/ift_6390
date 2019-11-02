@@ -2,3 +2,7 @@ numpy
 pathlib
 scipy
 nltk
+pandas
+sklearn
+transformers
+torch
