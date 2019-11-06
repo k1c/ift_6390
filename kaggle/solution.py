@@ -95,44 +95,44 @@ class NaiveBayesModel:
         predictions = self.predict(X_val)
         return np.mean(np.asarray(predictions) == np.asarray(y_val))
 
-class RMSELoss(nn.Module):
-    def __init__(self, eps=1e-6):
-        super().__init__()
-        self.mse = nn.MSELoss()
-        self.eps = eps
-
-    def forward(self, yhat, y):
-        loss = torch.sqrt(self.mse(yhat, y) + self.eps)
-        return loss
+# class RMSELoss(nn.Module):
+#     def __init__(self, eps=1e-6):
+#         super().__init__()
+#         self.mse = nn.MSELoss()
+#         self.eps = eps
+#
+#     def forward(self, yhat, y):
+#         loss = torch.sqrt(self.mse(yhat, y) + self.eps)
+#         return loss
 
 class Bert_MLP():
     def __init__(self,batch_size, train_epochs, optimizer_learning_rate, max_sequence_length):
         self.encoding = BertModel.from_pretrained('bert-base-cased', output_hidden_states=False)
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-        self.classifier = torch.nn.Linear(768, 1) #bert embedding size x number of classifiers
+        self.classifier = torch.nn.Linear(768, 20) #bert embedding size x number of classifiers
         self.optimizer = torch.optim.Adam(self.classifier.parameters(), lr=optimizer_learning_rate) #AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
         self.batch_size = batch_size
         self.max_sequence_length = max_sequence_length
         self.num_train_epochs = train_epochs
 
 
-    def get_statuses_with_personality_labels(self, features, labels):
-        # batch-size X number of personalities bs X 5
-        personality_traits = list()
-        for label in labels:
-            personality_traits.append(label.personality_traits.as_list())
-
-        # batch-size X number of statuses bs X 2
-        statuses = list()
-        for feature in features:
-            statuses.append(feature.statuses)
-
-        dataset = list()
-        for i, row in enumerate(statuses):
-            for status in row:
-                dataset.append((status, personality_traits[i]))
-
-        return dataset
+    # def get_statuses_with_personality_labels(self, features, labels):
+    #     # batch-size X number of personalities bs X 20
+    #     personality_traits = list()
+    #     for label in labels:
+    #         personality_traits.append(label.personality_traits.as_list())
+    #
+    #     # batch-size X number of statuses bs X 2
+    #     statuses = list()
+    #     for feature in features:
+    #         statuses.append(feature.statuses)
+    #
+    #     dataset = list()
+    #     for i, row in enumerate(statuses):
+    #         for status in row:
+    #             dataset.append((status, personality_traits[i]))
+    #
+    #     return dataset
 
     # Bert is a model with absolute position embeddings so it's usually advised
     # to pad the inputs on the right rather than the left.
@@ -174,7 +174,7 @@ class Bert_MLP():
 
         num_batches = math.ceil(len(input_ids) / self.batch_size)
 
-        criterion = RMSELoss()
+        criterion = RMSELoss() #TODO change the loss for classification (cross entropy)
 
         # right now, using bert as a feature extractor and learning at linear layer level
         # if we want to fine-tune BERT, need to put the encoding parameters + regressor parameters in a list and send it to optimizer
@@ -200,7 +200,7 @@ class Bert_MLP():
                 # and I need to bring it down to (BATCH_SIZE, hidden_size) to get a sentence representation (not a word representation)
                 # therefore I can use the CLS tokens or I can average over the sequence length (chose the latter)
                 sent_emb = last_hidden_states.mean(1) # (BATCH_SIZE, hidden_size)
-                y_hat = self.classifier(sent_emb) # BATCH_SIZE X 1
+                y_hat = self.classifier(sent_emb) # BATCH_SIZE X 20
                 labels_batch = labels[batch_idx * self.batch_size:(batch_idx+1) * self.batch_size]
                 tr_loss = criterion(y_hat, labels_batch)
                 tr_loss.backward()
@@ -242,8 +242,9 @@ class Bert_MLP():
                 outputs = self.encoding(input_ids=zero_pad_input_ids_user, attention_mask=attention_mask) # outputs is a tuple
                 last_hidden_states = outputs[0]
                 sent_emb = last_hidden_states.mean(1) # (status_list_length, hidden_size)
-            y_hat = self.classifier(sent_emb)
-            #user_prediction = y_hat.mean(0) # status_list_length X 5 therefore need to average over axis 0, shape 1X5
+            y_hat = self.classifier(sent_emb) #sub-reddit length X 20
+            #TODO take argmax of y_hat
+            #user_prediction = y_hat.mean(0) # status_list_length X 20 therefore need to average over axis 0, shape 1X5
             predictions.append(y_hat)
 
         return predictions
