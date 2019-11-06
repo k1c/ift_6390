@@ -17,6 +17,11 @@ from sklearn.model_selection import train_test_split
 from nltk.tokenize import RegexpTokenizer
 import pandas as pd
 import array
+import torch
+from torch import nn
+import math
+
+from transformers import BertModel, BertTokenizer
 
 DATA_PATH = pathlib.Path("data/")
 
@@ -90,6 +95,169 @@ class NaiveBayesModel:
         predictions = self.predict(X_val)
         return np.mean(np.asarray(predictions) == np.asarray(y_val))
 
+class RMSELoss(nn.Module):
+    def __init__(self, eps=1e-6):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        self.eps = eps
+
+    def forward(self, yhat, y):
+        loss = torch.sqrt(self.mse(yhat, y) + self.eps)
+        return loss
+
+class Bert_MLP():
+    def __init__(self,batch_size, train_epochs, optimizer_learning_rate, max_sequence_length):
+        self.encoding = BertModel.from_pretrained('bert-base-cased', output_hidden_states=False)
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+        self.classifier = torch.nn.Linear(768, 1) #bert embedding size x number of classifiers
+        self.optimizer = torch.optim.Adam(self.classifier.parameters(), lr=optimizer_learning_rate) #AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
+        self.batch_size = batch_size
+        self.max_sequence_length = max_sequence_length
+        self.num_train_epochs = train_epochs
+
+
+    def get_statuses_with_personality_labels(self, features, labels):
+        # batch-size X number of personalities bs X 5
+        personality_traits = list()
+        for label in labels:
+            personality_traits.append(label.personality_traits.as_list())
+
+        # batch-size X number of statuses bs X 2
+        statuses = list()
+        for feature in features:
+            statuses.append(feature.statuses)
+
+        dataset = list()
+        for i, row in enumerate(statuses):
+            for status in row:
+                dataset.append((status, personality_traits[i]))
+
+        return dataset
+
+    # Bert is a model with absolute position embeddings so it's usually advised
+    # to pad the inputs on the right rather than the left.
+    # batch is a list of tensors
+    def get_zero_pad(self, batch, MAX_SEQ_LENGTH):
+        max_length = min(max(s.shape[1] for s in batch), self.max_sequence_length)
+        padded_batch = np.zeros((len(batch), max_length))
+        for i, s in enumerate(batch):
+            padded_batch[i:s.shape[1]] = s[:max_length]
+        return torch.from_numpy(padded_batch).long()
+
+    # Mask to avoid performing attention on padding token indices.
+    # Mask values selected in [0, 1]: 1 for tokens that are NOT MASKED, 0 for MASKED tokens.
+    # returns torch.FloatTensor of shape (BATCH_SIZE, sequence_length)
+    def get_attention_mask(self, zero_pad_input_ids):
+        attention_mask = zero_pad_input_ids.ne(0).float()  # everything in input not equal to 0 will get 1, else 0
+        return attention_mask
+
+    def train(self, X_train, labels):
+
+        # dataset = self.get_statuses_with_personality_labels(features, labels)
+        #
+        # #shuffle the dataset
+        # shuffle(dataset)
+        #
+        # statuses, labels = zip(*dataset)
+        #
+        # #cast from tuple to list
+        # statuses = list(statuses) #size of status is number of users * len(statuses) for each user (if each user has 2 statuses then its 100)
+        # labels = list(labels)
+        #
+        # assert len(statuses) == len(labels), "There should be an equal amount of statuses and labels (each status has one label)"
+
+        labels = torch.tensor(labels)
+
+        input_ids = list() #list of torch tensors
+        for x in X_train:
+            input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True)]))
+
+        num_batches = math.ceil(len(input_ids) / self.batch_size)
+
+        criterion = RMSELoss()
+
+        # right now, using bert as a feature extractor and learning at linear layer level
+        # if we want to fine-tune BERT, need to put the encoding parameters + regressor parameters in a list and send it to optimizer
+
+        self.encoding.train()
+
+        for epoch in range(self.num_train_epochs):
+            print("Running Training \n")
+            running_loss = 0.0
+            for batch_idx in range(num_batches):
+                inpud_ids_batch = input_ids[batch_idx * self.batch_size:(batch_idx+1) * self.batch_size]
+                zero_pad_input_ids_batch = self.get_zero_pad(inpud_ids_batch, self.max_sequence_length)
+                attention_mask = self.get_attention_mask(zero_pad_input_ids_batch)
+
+                # zero the parameter gradients
+                self.optimizer.zero_grad()
+
+                # forward + backward + optimize
+                outputs = self.encoding(input_ids=zero_pad_input_ids_batch, attention_mask=attention_mask) # outputs is a tuple
+                last_hidden_states = outputs[0]
+
+                # last_hidden_states is of size (BATCH_SIZE, sequence_length, hidden_size)
+                # and I need to bring it down to (BATCH_SIZE, hidden_size) to get a sentence representation (not a word representation)
+                # therefore I can use the CLS tokens or I can average over the sequence length (chose the latter)
+                sent_emb = last_hidden_states.mean(1) # (BATCH_SIZE, hidden_size)
+                y_hat = self.classifier(sent_emb) # BATCH_SIZE X 1
+                labels_batch = labels[batch_idx * self.batch_size:(batch_idx+1) * self.batch_size]
+                tr_loss = criterion(y_hat, labels_batch)
+                tr_loss.backward()
+                self.optimizer.step()
+
+                # print statistics
+                running_loss += tr_loss.item()
+                if batch_idx % 2 == 2-1:  # print every 2 mini-batches
+                    print('[%d, %5d] loss: %.3f' %
+                          (epoch + 1, batch_idx + 1, running_loss / 2))
+                    running_loss = 0.0
+
+
+    def predict(self, X_test):
+
+        # statuses = list()
+        # for feature in X_test:
+        #     statuses.append(feature.statuses)
+        #
+        # user_input_ids = list() #list of torch tensors
+        # for row in statuses:
+        #     input_ids = list()
+        #     for status in row:
+        #         input_ids.append(torch.tensor([self.tokenizer.encode(status, add_special_tokens=True)]))
+        #     user_input_ids.append(input_ids)
+
+        input_ids = list() #list of torch tensors
+        for x in X_test:
+            input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True)]))
+
+        predictions = list()
+        self.encoding.eval()
+        for input_ids in input_ids: #for list of statuses for each user
+            with torch.no_grad():  # using BERT as a feature extractor (freezing BERT's weights and using these to extract features)
+                zero_pad_input_ids_user = self.get_zero_pad(input_ids, self.max_sequence_length)
+                attention_mask = self.get_attention_mask(zero_pad_input_ids_user)
+
+                #forward
+                outputs = self.encoding(input_ids=zero_pad_input_ids_user, attention_mask=attention_mask) # outputs is a tuple
+                last_hidden_states = outputs[0]
+                sent_emb = last_hidden_states.mean(1) # (status_list_length, hidden_size)
+            y_hat = self.classifier(sent_emb)
+            #user_prediction = y_hat.mean(0) # status_list_length X 5 therefore need to average over axis 0, shape 1X5
+            predictions.append(y_hat)
+
+        return predictions
+
+        # return [
+        #     PersonalityTraits(
+        #         openness=prediction[0].item(),
+        #         conscientiousness=prediction[1].item(),
+        #         extroversion=prediction[2].item(),
+        #         agreeableness=prediction[3].item(),
+        #         neuroticism=prediction[4].item()
+        #     )
+        #     for prediction in predictions
+        # ]
 
 # source: https://towardsdatascience.com/natural-language-processing-feature-engineering-using-tf-idf-e8b9d00e7e76
 # TF IDF is TF multiplied by IDF
@@ -291,25 +459,30 @@ def get_subreddits(df, lem, stem, remove_stop_words):
     return subreddits
 
 
-def main(is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words, alpha, num_keep):
-    # build pandas dataframe to gather text from subreddits together
-    df_X = pd.DataFrame(X_train, columns=['text'])
-    df_Y = pd.DataFrame(y_train, columns=['labels'])
-    df = pd.concat([df_X, df_Y], axis=1)
+def main(model,is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words, alpha, num_keep, batch_size, train_epochs, optimizer_learning_rate, max_sequence_length):
 
     X_train = preprocess(X_train, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
     X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
 
     if is_train:
         # split train into train / val
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42) #test split could be another hyperparameter
 
-    subreddits = get_subreddits(df, lem, stem, remove_stop_words)
+    if model == "NAIVE_BAYES":
+        # build pandas dataframe to gather text from subreddits together
+        df_X = pd.DataFrame(X_train, columns=['text'])
+        df_Y = pd.DataFrame(y_train, columns=['labels'])
+        df = pd.concat([df_X, df_Y], axis=1)
 
-    vocab, X_train_sparse = build_vocab_tfidf(X_train, subreddits, num_keep)
+        subreddits = get_subreddits(df, lem, stem, remove_stop_words)
+        vocab, X_train_sparse = build_vocab_tfidf(X_train, subreddits, num_keep)
 
-    model = NaiveBayesModel(vocab=vocab, alpha=alpha)
-    model.train(X_train_sparse, y_train)
+        model = NaiveBayesModel(vocab=vocab, alpha=alpha)
+        model.train(X_train_sparse, y_train)
+    elif model == "BERT_MLP":
+        model = Bert_MLP(batch_size, train_epochs, optimizer_learning_rate, max_sequence_length)
+        model.train(X_train, y_train)
+
     y_prediction = model.predict(X_test)
 
     if is_train:
@@ -321,34 +494,41 @@ def main(is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words
 
 
 if __name__ == "__main__":
-    nltk.download('wordnet')
-    nltk.download('stopwords')
-    nltk.download('punkt')
+    # nltk.download('wordnet')
+    # nltk.download('stopwords')
+    # nltk.download('punkt')
+
+    #model = "NAIVE_BAYES"
+    model = "BERT_MLP"
+
 
     X_train, y_train = read_data(set_="train")
     X_test = read_data(set_="test")
+    print(y_train[0]) #"hockey"
 
-    is_train = False
+    is_train = True
 
     best_score = 0.
     score = 0.
     best_config = None
     best_predictions = None
     for lem in [False]:  # HP_Search params: [True, False]
-        for stem in [True]:  # HP_Search params: [True, False]
-            for remove_stop_words in [True]:  # HP_Search params: [True, False]
+        for stem in [False]:  # HP_Search params: [True, False]
+            for remove_stop_words in [False]:  # HP_Search params: [True, False]
                 for alpha in [0.1]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
                     for num_keep in [55350]:  # HP_Search params: [40000,50000,540000,55000,55350]
-                        config = f"smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_keep {num_keep}"
-                        print(f">>> {config}")
-                        y_prediction, score = main(is_train, score, X_train, y_train, X_test, lem, stem,
-                                                   remove_stop_words, alpha, num_keep)
-                        print("SCORE", score)
-                        if score > best_score:
-                            best_score = score
-                            best_config = config
-                            best_predictions = y_prediction
-                            print("BEST SCORE", best_score)
-                            print("BEST CONFIG", best_config)
-
-
+                        for batch_size in [6]:
+                            for train_epochs in [1000]:
+                                for optimizer_learning_rate in [1e-3]:
+                                    for max_sequence_length in [512]:
+                                        config = f"smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_keep {num_keep}, batch_size {batch_size}, train_epochs {train_epochs}, optimizer_lr {optimizer_learning_rate}, max_seq_length {max_sequence_length}"
+                                        print(f">>> {config}")
+                                        y_prediction, score = main(model,is_train, score, X_train, y_train, X_test, lem, stem,
+                                                                   remove_stop_words, alpha, num_keep, batch_size, train_epochs, optimizer_learning_rate, max_sequence_length)
+                                        print("SCORE", score)
+                                        if score > best_score:
+                                            best_score = score
+                                            best_config = config
+                                            best_predictions = y_prediction
+                                            print("BEST SCORE", best_score)
+                                            print("BEST CONFIG", best_config)
