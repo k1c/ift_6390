@@ -12,7 +12,6 @@ from nltk.stem import WordNetLemmatizer
 from nltk.stem import PorterStemmer
 from sklearn.model_selection import train_test_split
 from nltk.tokenize import RegexpTokenizer
-import array
 from flair.data import Sentence
 from flair.embeddings import DocumentPoolEmbeddings
 from flair.embeddings import FlairEmbeddings
@@ -26,9 +25,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
-from sklearn.svm import SVC
 from sklearn.ensemble import BaggingClassifier
-from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.ensemble import VotingClassifier
 
@@ -36,21 +33,21 @@ DATA_PATH = pathlib.Path("data/")
 
 _CLASSIFIERS = {
     "Random Forest": (
-        RandomForestClassifier(n_estimators=200, max_depth=125, random_state=42),
+        RandomForestClassifier(n_estimators=200, max_depth=150, random_state=42),
         {
-            "clf__max_depth": [200, 300]
         }
     ),
     "Logistic Regression": (
-        LogisticRegression(solver="saga", multi_class="multinomial", penalty="l2"),
+        LogisticRegression(solver="saga", multi_class="multinomial"),
         {
+            "clf__penalty": ["l2", "l1"]
 
         }
     ),
     "Naive Bayes": (
         MultinomialNB(),
         {
-            "clf__alpha": [0.25, 0.5],
+            "clf__alpha": [0.15, 0, 2, 0.25, 0.3, 0., 35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65],
         }
     ),
     "SVM_0": (
@@ -75,9 +72,15 @@ def read_data(set_):
     return np.load(DATA_PATH / f"data_{set_}.pkl", allow_pickle=True)
 
 
-def preprocess(data, lem=True, stem=True, embed=True):
-    return [preprocess_line(line, lem, stem, embed) for line in data]
-
+def preprocess(X, y, lem=True, stem=True, embed=True):
+    preprocessed_x = []
+    preprocessed_y = []
+    for line_x, line_y in zip(X, y):
+        p = preprocess_line(line_x, lem, stem, embed)
+        if len(p) == 0:
+            preprocessed_x.append(p)
+            preprocessed_y.append(line_y)
+    return preprocessed_x, preprocessed_y
 
 def preprocess_line(line, lem=True, stem=True, embed=True):
     tokenizer = RegexpTokenizer(r"(?u)\b\w\w+\b")
@@ -98,9 +101,12 @@ def preprocess_line(line, lem=True, stem=True, embed=True):
     line = " ".join(line)
 
     if embed:
-        sentence = Sentence(line)
-        _EMBEDDER.embed(sentence)
-        line = sentence.get_embedding().detach().numpy()
+        try:
+            sentence = Sentence(line)
+            _EMBEDDER.embed(sentence)
+            line = sentence.get_embedding().detach().numpy()
+        except Exception:
+            return None
 
     return line
 
@@ -180,14 +186,10 @@ if __name__ == "__main__":
         for stem in [False]:
             print(f"STEM {stem}")
             # Preprocess data
-            X = preprocess(X_raw, lem=lem, stem=stem, embed=True)
+            X, y = preprocess(X_raw, y_raw, lem=lem, stem=stem, embed=True)
             X_train, X_val, y_train, y_val = train_test_split(X,
-                                                              y_raw,
+                                                              y,
                                                               test_size=0.2,
                                                               random_state=42)
-
-
-
-#            for model in _CLASSIFIERS.keys():
-            main(X_train, X_val, y_train, y_val, clf_name="Naive Bayes", embed=True)
-
+            for model_name in _CLASSIFIERS.keys():
+                main(X_train, X_val, y_train, y_val, clf_name=model_name, embed=True)
