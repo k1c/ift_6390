@@ -21,6 +21,7 @@ import torch
 from torch import nn
 import math
 from sklearn import preprocessing
+from sklearn.metrics import accuracy_score
 
 from transformers import BertModel, BertTokenizer
 
@@ -111,7 +112,7 @@ class Bert_MLP():
         self.encoding = BertModel.from_pretrained('bert-base-cased', output_hidden_states=False)
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
         self.classifier = torch.nn.Linear(768, 20) #bert embedding size x number of classifiers
-        self.optimizer = torch.optim.Adam(self.classifier.parameters(), lr=optimizer_learning_rate) #AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
+        self.optimizer = torch.optim.Adam(self.classifier.parameters(), lr=optimizer_learning_rate) #TODO check AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
         self.batch_size = batch_size
         self.max_sequence_length = max_sequence_length
         self.num_train_epochs = train_epochs
@@ -138,11 +139,15 @@ class Bert_MLP():
     # Bert is a model with absolute position embeddings so it's usually advised
     # to pad the inputs on the right rather than the left.
     # batch is a list of tensors
-    def get_zero_pad(self, batch, MAX_SEQ_LENGTH):
+    def get_zero_pad(self, batch):
+        # for s in batch:
+        #     print("POO")
+        #     print(s)
+        #     print(s.shape[1])
         max_length = min(max(s.shape[1] for s in batch), self.max_sequence_length)
         padded_batch = np.zeros((len(batch), max_length))
         for i, s in enumerate(batch):
-            padded_batch[i:s.shape[1]] = s[:max_length]
+            padded_batch[i,:s.shape[1]] = s[:max_length]
         return torch.from_numpy(padded_batch).long()
 
     # Mask to avoid performing attention on padding token indices.
@@ -153,21 +158,7 @@ class Bert_MLP():
         return attention_mask
 
     def train(self, X_train, labels):
-
-        # dataset = self.get_statuses_with_personality_labels(features, labels)
-        #
-        # #shuffle the dataset
-        # shuffle(dataset)
-        #
-        # statuses, labels = zip(*dataset)
-        #
-        # #cast from tuple to list
-        # statuses = list(statuses) #size of status is number of users * len(statuses) for each user (if each user has 2 statuses then its 100)
-        # labels = list(labels)
-        #
-        # assert len(statuses) == len(labels), "There should be an equal amount of statuses and labels (each status has one label)"
-
-        labels = torch.tensor(labels) #TODO check if have to be floats
+        labels = torch.tensor(labels)
 
         input_ids = list() #list of torch tensors
         for x in X_train:
@@ -183,11 +174,10 @@ class Bert_MLP():
         self.encoding.train()
 
         for epoch in range(self.num_train_epochs):
-            print("Running Training \n")
             running_loss = 0.0
             for batch_idx in range(num_batches):
                 inpud_ids_batch = input_ids[batch_idx * self.batch_size:(batch_idx+1) * self.batch_size]
-                zero_pad_input_ids_batch = self.get_zero_pad(inpud_ids_batch, self.max_sequence_length)
+                zero_pad_input_ids_batch = self.get_zero_pad(inpud_ids_batch)
                 attention_mask = self.get_attention_mask(zero_pad_input_ids_batch)
 
                 # zero the parameter gradients
@@ -216,43 +206,28 @@ class Bert_MLP():
 
 
     def predict(self, X_test):
-
-        # statuses = list()
-        # for feature in X_test:
-        #     statuses.append(feature.statuses)
-        #
-        # user_input_ids = list() #list of torch tensors
-        # for row in statuses:
-        #     input_ids = list()
-        #     for status in row:
-        #         input_ids.append(torch.tensor([self.tokenizer.encode(status, add_special_tokens=True)]))
-        #     user_input_ids.append(input_ids)
-
         input_ids = list() #list of torch tensors
         for x in X_test:
             input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
 
-        predictions = list()
         self.encoding.eval()
-        for input_ids in input_ids: #for list of statuses for each user
-            with torch.no_grad():  # using BERT as a feature extractor (freezing BERT's weights and using these to extract features)
-                zero_pad_input_ids_user = self.get_zero_pad(input_ids, self.max_sequence_length)
-                attention_mask = self.get_attention_mask(zero_pad_input_ids_user)
+        with torch.no_grad():  # using BERT as a feature extractor (freezing BERT's weights and using these to extract features)
+            zero_pad_input_ids_user = self.get_zero_pad(input_ids)
+            attention_mask = self.get_attention_mask(zero_pad_input_ids_user)
 
-                #forward
-                outputs = self.encoding(input_ids=zero_pad_input_ids_user, attention_mask=attention_mask) # outputs is a tuple
-                last_hidden_states = outputs[0]
-                sent_emb = last_hidden_states.mean(1) # (status_list_length, hidden_size)
-            y_hat = self.classifier(sent_emb) #sub-reddit length X 20
-            #user_prediction = y_hat.mean(0) # status_list_length X 20 therefore need to average over axis 0, shape 1X5
-            predictions.append(y_hat)
-
-        return predictions
+            #forward
+            outputs = self.encoding(input_ids=zero_pad_input_ids_user, attention_mask=attention_mask) # outputs is a tuple
+            last_hidden_states = outputs[0]
+            sent_emb = last_hidden_states.mean(1) # (sub-reddit length, hidden_size)
+        y_hat = self.classifier(sent_emb) #sub-reddit length X 20
+        return y_hat
 
     # predict on X_val and compare to y_val to get a score
     def get_accuracy(self, X_val, y_val):
         predictions = self.predict(X_val)
-        return np.mean(np.asarray(predictions) == np.asarray(y_val))
+        predictions = predictions.argmax(dim=1).numpy()
+        y_val = np.asarray(y_val)
+        return accuracy_score(y_val, predictions)
 
 # source: https://towardsdatascience.com/natural-language-processing-feature-engineering-using-tf-idf-e8b9d00e7e76
 # TF IDF is TF multiplied by IDF
@@ -476,8 +451,10 @@ def main(model,is_train, score, X_train, y_train, X_test, lem, stem, remove_stop
         model.train(X_train_sparse, y_train)
     elif model == "BERT_MLP":
         model = Bert_MLP(batch_size, train_epochs, optimizer_learning_rate, max_sequence_length)
+        print("Running Training \n")
         model.train(X_train, y_train)
 
+    print("Running Testing \n")
     y_prediction = model.predict(X_test)
 
     if is_train:
@@ -498,20 +475,10 @@ if __name__ == "__main__":
 
 
     X_train, y_train = read_data(set_="train")
-    # print(X_train[0])
-    # print(X_train[0].split())
-
-
-    # X_train needs to be a list of strings
 
     # convert labels to numbers 0 - 19
     le = preprocessing.LabelEncoder()
     y_train = le.fit_transform(y_train).tolist()
-    # print(len(y_train))
-    # print(type(y_train))
-    # print(y_train[0])
-    # y_train = le.inverse_transform(y_train)
-    # print(y_train[0])
 
     X_test = read_data(set_="test")
 
@@ -526,8 +493,8 @@ if __name__ == "__main__":
             for remove_stop_words in [False]:  # HP_Search params: [True, False]
                 for alpha in [0.1]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
                     for num_keep in [55350]:  # HP_Search params: [40000,50000,540000,55000,55350]
-                        for batch_size in [6]:
-                            for train_epochs in [1000]:
+                        for batch_size in [8,16,32]:
+                            for train_epochs in [5,10]:
                                 for optimizer_learning_rate in [1e-3]:
                                     for max_sequence_length in [512]:
                                         config = f"smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_keep {num_keep}, batch_size {batch_size}, train_epochs {train_epochs}, optimizer_lr {optimizer_learning_rate}, max_seq_length {max_sequence_length}"
