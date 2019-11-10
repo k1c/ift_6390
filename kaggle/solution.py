@@ -20,6 +20,7 @@ import array
 import torch
 from torch import nn
 import math
+from sklearn import preprocessing
 
 from transformers import BertModel, BertTokenizer
 
@@ -166,15 +167,15 @@ class Bert_MLP():
         #
         # assert len(statuses) == len(labels), "There should be an equal amount of statuses and labels (each status has one label)"
 
-        labels = torch.tensor(labels)
+        labels = torch.tensor(labels) #TODO check if have to be floats
 
         input_ids = list() #list of torch tensors
         for x in X_train:
-            input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True)]))
+            input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
 
         num_batches = math.ceil(len(input_ids) / self.batch_size)
 
-        criterion = RMSELoss() #TODO change the loss for classification (cross entropy)
+        criterion = nn.CrossEntropyLoss()
 
         # right now, using bert as a feature extractor and learning at linear layer level
         # if we want to fine-tune BERT, need to put the encoding parameters + regressor parameters in a list and send it to optimizer
@@ -229,7 +230,7 @@ class Bert_MLP():
 
         input_ids = list() #list of torch tensors
         for x in X_test:
-            input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True)]))
+            input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
 
         predictions = list()
         self.encoding.eval()
@@ -243,22 +244,15 @@ class Bert_MLP():
                 last_hidden_states = outputs[0]
                 sent_emb = last_hidden_states.mean(1) # (status_list_length, hidden_size)
             y_hat = self.classifier(sent_emb) #sub-reddit length X 20
-            #TODO take argmax of y_hat
             #user_prediction = y_hat.mean(0) # status_list_length X 20 therefore need to average over axis 0, shape 1X5
             predictions.append(y_hat)
 
         return predictions
 
-        # return [
-        #     PersonalityTraits(
-        #         openness=prediction[0].item(),
-        #         conscientiousness=prediction[1].item(),
-        #         extroversion=prediction[2].item(),
-        #         agreeableness=prediction[3].item(),
-        #         neuroticism=prediction[4].item()
-        #     )
-        #     for prediction in predictions
-        # ]
+    # predict on X_val and compare to y_val to get a score
+    def get_accuracy(self, X_val, y_val):
+        predictions = self.predict(X_val)
+        return np.mean(np.asarray(predictions) == np.asarray(y_val))
 
 # source: https://towardsdatascience.com/natural-language-processing-feature-engineering-using-tf-idf-e8b9d00e7e76
 # TF IDF is TF multiplied by IDF
@@ -462,8 +456,8 @@ def get_subreddits(df, lem, stem, remove_stop_words):
 
 def main(model,is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words, alpha, num_keep, batch_size, train_epochs, optimizer_learning_rate, max_sequence_length):
 
-    X_train = preprocess(X_train, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
-    X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
+    #X_train = preprocess(X_train, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
+    #X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
 
     if is_train:
         # split train into train / val
@@ -504,8 +498,22 @@ if __name__ == "__main__":
 
 
     X_train, y_train = read_data(set_="train")
+    # print(X_train[0])
+    # print(X_train[0].split())
+
+
+    # X_train needs to be a list of strings
+
+    # convert labels to numbers 0 - 19
+    le = preprocessing.LabelEncoder()
+    y_train = le.fit_transform(y_train).tolist()
+    # print(len(y_train))
+    # print(type(y_train))
+    # print(y_train[0])
+    # y_train = le.inverse_transform(y_train)
+    # print(y_train[0])
+
     X_test = read_data(set_="test")
-    print(y_train[0]) #"hockey"
 
     is_train = True
 
