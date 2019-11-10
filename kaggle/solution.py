@@ -97,16 +97,6 @@ class NaiveBayesModel:
         predictions = self.predict(X_val)
         return np.mean(np.asarray(predictions) == np.asarray(y_val))
 
-# class RMSELoss(nn.Module):
-#     def __init__(self, eps=1e-6):
-#         super().__init__()
-#         self.mse = nn.MSELoss()
-#         self.eps = eps
-#
-#     def forward(self, yhat, y):
-#         loss = torch.sqrt(self.mse(yhat, y) + self.eps)
-#         return loss
-
 class Bert_MLP():
     def __init__(self,batch_size, train_epochs, optimizer_learning_rate, max_sequence_length):
         self.encoding = BertModel.from_pretrained('bert-base-cased', output_hidden_states=False)
@@ -116,25 +106,6 @@ class Bert_MLP():
         self.batch_size = batch_size
         self.max_sequence_length = max_sequence_length
         self.num_train_epochs = train_epochs
-
-
-    # def get_statuses_with_personality_labels(self, features, labels):
-    #     # batch-size X number of personalities bs X 20
-    #     personality_traits = list()
-    #     for label in labels:
-    #         personality_traits.append(label.personality_traits.as_list())
-    #
-    #     # batch-size X number of statuses bs X 2
-    #     statuses = list()
-    #     for feature in features:
-    #         statuses.append(feature.statuses)
-    #
-    #     dataset = list()
-    #     for i, row in enumerate(statuses):
-    #         for status in row:
-    #             dataset.append((status, personality_traits[i]))
-    #
-    #     return dataset
 
     # Bert is a model with absolute position embeddings so it's usually advised
     # to pad the inputs on the right rather than the left.
