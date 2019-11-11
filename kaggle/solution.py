@@ -22,8 +22,10 @@ from torch import nn
 import math
 from sklearn import preprocessing
 from sklearn.metrics import accuracy_score
+import logging
 
 from transformers import BertModel, BertTokenizer
+logging.getLogger("transformers.tokenization_utils").setLevel(logging.ERROR)
 
 DATA_PATH = pathlib.Path("data/")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -192,18 +194,22 @@ class Bert_MLP():
         for x in X_test:
             input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
 
+        num_batches = math.ceil(len(input_ids) / self.batch_size)
+
         self.encoding.eval()
         with torch.no_grad():  # using BERT as a feature extractor (freezing BERT's weights and using these to extract features)
-            zero_pad_input_ids_user = self.get_zero_pad(input_ids)
-            attention_mask = self.get_attention_mask(zero_pad_input_ids_user)
+            for batch_idx in range(num_batches):
+                inpud_ids_batch = input_ids[batch_idx * self.batch_size:(batch_idx + 1) * self.batch_size]
+                zero_pad_input_ids_batch = self.get_zero_pad(inpud_ids_batch)
+                attention_mask = self.get_attention_mask(zero_pad_input_ids_batch)
 
-            zero_pad_input_ids_user = zero_pad_input_ids_user.to(DEVICE)
-            attention_mask = attention_mask.to(DEVICE)
+                zero_pad_input_ids_batch = zero_pad_input_ids_batch.to(DEVICE)
+                attention_mask = attention_mask.to(DEVICE)
 
-            #forward
-            outputs = self.encoding(input_ids=zero_pad_input_ids_user, attention_mask=attention_mask) # outputs is a tuple
-            last_hidden_states = outputs[0]
-            sent_emb = last_hidden_states.mean(1) # (sub-reddit length, hidden_size)
+                #forward
+                outputs = self.encoding(input_ids=zero_pad_input_ids_batch, attention_mask=attention_mask) # outputs is a tuple
+                last_hidden_states = outputs[0]
+                sent_emb = last_hidden_states.mean(1) # (sub-reddit length, hidden_size)
         y_hat = self.classifier(sent_emb) #sub-reddit length X 20
         return y_hat
 
