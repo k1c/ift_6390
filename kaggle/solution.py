@@ -26,6 +26,8 @@ from sklearn.metrics import accuracy_score
 from transformers import BertModel, BertTokenizer
 
 DATA_PATH = pathlib.Path("data/")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+LOG_FREQ = 200
 
 class BaselineModel:
     def __init__(self):
@@ -144,12 +146,20 @@ class Bert_MLP():
 
         self.encoding.train()
 
+        #CUDA
+        self.encoding.to(DEVICE)
+        self.classifier.to(DEVICE)
+
+
         for epoch in range(self.num_train_epochs):
             running_loss = 0.0
             for batch_idx in range(num_batches):
                 inpud_ids_batch = input_ids[batch_idx * self.batch_size:(batch_idx+1) * self.batch_size]
                 zero_pad_input_ids_batch = self.get_zero_pad(inpud_ids_batch)
                 attention_mask = self.get_attention_mask(zero_pad_input_ids_batch)
+
+                zero_pad_input_ids_batch = zero_pad_input_ids_batch.to(DEVICE)
+                attention_mask = attention_mask.to(DEVICE)
 
                 # zero the parameter gradients
                 self.optimizer.zero_grad()
@@ -164,15 +174,16 @@ class Bert_MLP():
                 sent_emb = last_hidden_states.mean(1) # (BATCH_SIZE, hidden_size)
                 y_hat = self.classifier(sent_emb) # BATCH_SIZE X 20
                 labels_batch = labels[batch_idx * self.batch_size:(batch_idx+1) * self.batch_size]
+                labels_batch = labels_batch.to(DEVICE)
                 tr_loss = criterion(y_hat, labels_batch)
                 tr_loss.backward()
                 self.optimizer.step()
 
                 # print statistics
                 running_loss += tr_loss.item()
-                if batch_idx % 2 == 2-1:  # print every 2 mini-batches
+                if batch_idx % LOG_FREQ == 0:  # print every LOG_FREQ mini-batches
                     print('[%d, %5d] loss: %.3f' %
-                          (epoch + 1, batch_idx + 1, running_loss / 2))
+                          (epoch + 1, batch_idx + 1, running_loss / LOG_FREQ))
                     running_loss = 0.0
 
 
@@ -186,6 +197,9 @@ class Bert_MLP():
             zero_pad_input_ids_user = self.get_zero_pad(input_ids)
             attention_mask = self.get_attention_mask(zero_pad_input_ids_user)
 
+            zero_pad_input_ids_user = zero_pad_input_ids_user.to(DEVICE)
+            attention_mask = attention_mask.to(DEVICE)
+
             #forward
             outputs = self.encoding(input_ids=zero_pad_input_ids_user, attention_mask=attention_mask) # outputs is a tuple
             last_hidden_states = outputs[0]
@@ -195,7 +209,7 @@ class Bert_MLP():
 
     # predict on X_val and compare to y_val to get a score
     def get_accuracy(self, X_val, y_val):
-        predictions = self.predict(X_val)
+        predictions = self.predict(X_val).cpu()
         predictions = predictions.argmax(dim=1).numpy()
         y_val = np.asarray(y_val)
         return accuracy_score(y_val, predictions)
