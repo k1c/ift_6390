@@ -115,10 +115,6 @@ class Bert_MLP():
     # to pad the inputs on the right rather than the left.
     # batch is a list of tensors
     def get_zero_pad(self, batch):
-        # for s in batch:
-        #     print("POO")
-        #     print(s)
-        #     print(s.shape[1])
         max_length = min(max(s.shape[1] for s in batch), self.max_sequence_length)
         padded_batch = np.zeros((len(batch), max_length))
         for i, s in enumerate(batch):
@@ -195,7 +191,7 @@ class Bert_MLP():
             input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
 
         num_batches = math.ceil(len(input_ids) / self.batch_size)
-
+        predictions = list()
         self.encoding.eval()
         with torch.no_grad():  # using BERT as a feature extractor (freezing BERT's weights and using these to extract features)
             for batch_idx in range(num_batches):
@@ -209,9 +205,11 @@ class Bert_MLP():
                 #forward
                 outputs = self.encoding(input_ids=zero_pad_input_ids_batch, attention_mask=attention_mask) # outputs is a tuple
                 last_hidden_states = outputs[0]
-                sent_emb = last_hidden_states.mean(1) # (sub-reddit length, hidden_size)
-        y_hat = self.classifier(sent_emb) #sub-reddit length X 20
-        return y_hat
+                sent_emb = last_hidden_states.mean(1) # (BATCH_SIZE, hidden_size)
+                y_hat = self.classifier(sent_emb) #BATCH_SIZE X 20
+                predictions.append(y_hat)
+        predictions = torch.cat(predictions, 0)
+        return predictions
 
     # predict on X_val and compare to y_val to get a score
     def get_accuracy(self, X_val, y_val):
@@ -466,12 +464,15 @@ if __name__ == "__main__":
 
 
     X_train, y_train = read_data(set_="train")
+    X_train = X_train[:53]
+    y_train = y_train[:53]
 
     # convert labels to numbers 0 - 19
     le = preprocessing.LabelEncoder()
     y_train = le.fit_transform(y_train).tolist()
 
     X_test = read_data(set_="test")
+    X_test = X_test[:53]
 
     is_train = True
 
@@ -484,8 +485,8 @@ if __name__ == "__main__":
             for remove_stop_words in [False]:  # HP_Search params: [True, False]
                 for alpha in [0.1]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
                     for num_keep in [55350]:  # HP_Search params: [40000,50000,540000,55000,55350]
-                        for batch_size in [8,16,32]:
-                            for train_epochs in [5,10]:
+                        for batch_size in [6]:
+                            for train_epochs in [2]:
                                 for optimizer_learning_rate in [1e-3]:
                                     for max_sequence_length in [512]:
                                         config = f"smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_keep {num_keep}, batch_size {batch_size}, train_epochs {train_epochs}, optimizer_lr {optimizer_learning_rate}, max_seq_length {max_sequence_length}"
