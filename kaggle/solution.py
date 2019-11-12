@@ -133,8 +133,7 @@ class Bert_MLP():
 
         input_ids = list() #list of torch tensors
         for x in X_train:
-            if len(x) != 0:
-                input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
+            input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
 
         num_batches = math.ceil(len(input_ids) / self.batch_size)
 
@@ -189,8 +188,7 @@ class Bert_MLP():
     def predict(self, X_test):
         input_ids = list() #list of torch tensors
         for x in X_test:
-            if len(x) != 0:
-                input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
+            input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
 
         num_batches = math.ceil(len(input_ids) / self.batch_size)
         predictions = list()
@@ -422,8 +420,8 @@ def get_subreddits(df, lem, stem, remove_stop_words):
 
 def main(model,is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words, alpha, num_keep, batch_size, train_epochs, optimizer_learning_rate, max_sequence_length):
 
-    X_train = preprocess(X_train, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
-    X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
+    #X_train = preprocess(X_train, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
+    #X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
 
     if is_train:
         # split train into train / val
@@ -484,10 +482,10 @@ if __name__ == "__main__":
     best_predictions = None
     for lem in [False]:  # HP_Search params: [True, False]
         for stem in [False]:  # HP_Search params: [True, False]
-            for remove_stop_words in [True]:  # HP_Search params: [True, False]
+            for remove_stop_words in [False]:  # HP_Search params: [True, False]
                 for alpha in [0.1]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
                     for num_keep in [55350]:  # HP_Search params: [40000,50000,540000,55000,55350]
-                        for batch_size in [6]:
+                        for batch_size in [10]: #6
                             for train_epochs in [5]:
                                 for optimizer_learning_rate in [5.e-5]: #1e-3
                                     for max_sequence_length in [512]:
