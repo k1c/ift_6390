@@ -480,8 +480,8 @@ if __name__ == "__main__":
     score = 0.
     best_config = None
     best_predictions = None
-    for lem in [True]:  # HP_Search params: [True, False]
-        for stem in [True]:  # HP_Search params: [True, False]
+    for lem in [False]:  # HP_Search params: [True, False]
+        for stem in [False]:  # HP_Search params: [True, False]
             for remove_stop_words in [True]:  # HP_Search params: [True, False]
                 for alpha in [0.1]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
                     for num_keep in [55350]:  # HP_Search params: [40000,50000,540000,55000,55350]
