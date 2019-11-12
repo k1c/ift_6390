@@ -15,7 +15,6 @@ from sklearn.model_selection import train_test_split
 from nltk.tokenize import RegexpTokenizer
 from flair.data import Sentence
 from flair.embeddings import DocumentPoolEmbeddings
-#from flair.embeddings import FlairEmbeddings
 from flair.embeddings import WordEmbeddings
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import CountVectorizer
@@ -26,13 +25,17 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
-from sklearn.ensemble import BaggingClassifier
-from sklearn.ensemble import AdaBoostClassifier
 from sklearn.ensemble import VotingClassifier
+from sklearn.neural_network import MLPClassifier
 
 _DATA_PATH = pathlib.Path("data/")
 
 _CLASSIFIERS = {
+    "MLP": (
+        MLPClassifier(hidden_layer_sizes=250, verbose=1, early_stopping=True),
+        {
+        }
+    ),
     "Random Forest": (
         RandomForestClassifier(random_state=42),
         {
@@ -49,7 +52,7 @@ _CLASSIFIERS = {
     "Naive Bayes": (
         MultinomialNB(),
         {
-            "alpha": [0.15, 0, 2, 0.25, 0.3, 0., 35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65],
+            "alpha": [0.15, 0.25, 0.5, 0.65],
         }
     ),
     "SVM_0": (
@@ -127,7 +130,8 @@ def preprocess_line(original_line, lem=True, stem=True, embed=True,remove_stop_w
         stop_words = set(stopwords.words('english'))
         new_line = [word for word in line if not word in stop_words]
         # n_stop_words
-        #features.append(len(line) - len(new_line))
+        if extra_features:
+            features.append(len(line) - len(new_line))
         line = new_line
 
     line = " ".join(line)
@@ -174,45 +178,33 @@ def write_csv(y_prediction):
             writer.writerow([i, y])
 
 
-def run_grid_search(clf, parameters, X_train, X_val, y_train, y_val, embed=False):
-    if embed:
-        text_clf = clf
-    else:
-        text_clf = Pipeline([
-            ('vect', CountVectorizer(stop_words='english', min_df=2, max_df=500)),
+def run_grid_search(clf, parameters, X_train, X_val, X_test, y_train, y_val, embed=False):
+    if not embed:
+        clf = Pipeline([
+            ('vect', CountVectorizer(stop_words='english', max_features=50000)),
             ('tfidf', TfidfTransformer()),
             ('clf', clf),
         ])
+    if X_val:
+        clf = GridSearchCV(clf, parameters, cv=2, iid=False, n_jobs=-1)
 
-    gs_clf = GridSearchCV(text_clf, parameters, cv=5, iid=False, n_jobs=-1)
+    clf.fit(X_train, y_train)
 
-    gs_clf.fit(X_train, y_train)
+    if not X_val:
+        test_prediction = clf.predict(X_test)
+        write_csv(test_prediction)
+        return 0., {}
 
-    prediction = gs_clf.predict(X_val)
+    prediction = clf.predict(X_val)
     accuracy = np.mean(prediction == y_val)
+    return accuracy, clf.best_params_
 
-    return accuracy, gs_clf.best_params_
 
-
-def main(X_train, X_val, y_train, y_val, clf_name="SVM_1",
-         bagging=False, boosting=False, voting=False, embed=False):
+def main(X_train, X_val, X_test, y_train, y_val, clf_name="SVM_1",
+         voting=False, embed=False):
 
     if isinstance(clf_name, str):
         clf, params = _CLASSIFIERS[clf_name]
-
-    if clf_name == "RandomForest" and (boosting or bagging):
-        raise ValueError(f"no boost or bagg for {clf_name}")
-
-
-    if bagging:
-        clf = BaggingClassifier(clf)
-        clf_name += " bagging"
-        params = {}
-
-    if boosting:
-        clf = AdaBoostClassifier(clf, algorithm='SAMME')
-        clf_name += " boost"
-        params = {}
 
     if voting:
         estimators = [(name, _CLASSIFIERS[name][0]) for name in clf_name]
@@ -222,29 +214,32 @@ def main(X_train, X_val, y_train, y_val, clf_name="SVM_1",
 
 
     print(f"Running GS for {clf_name}...")
-    accuracy, best_params = run_grid_search(clf, params, X_train, X_val, y_train, y_val, embed)
+    accuracy, best_params = run_grid_search(clf, params, X_train, X_val, X_test, y_train, y_val, embed)
     print(f">>> {clf_name} score = {accuracy}")
     print(f"{best_params}")
     return accuracy, best_params
 
 
-def _read_data(save=True, exp_name=""):
+def _read_data(save=False, exp_name="", test=False):
     X_test = read_data(set_="test.pkl")
-    X_test = preprocess_test(X_test, lem=False, stem=False, embed=True)
+    X_test = preprocess_test(X_test, lem=False, stem=False, embed=False)
 
     X_raw, y_raw = read_data(set_="train.pkl")
-    X, y = preprocess(X_raw, y_raw, lem=True, stem=True, embed=True)
+    X, y = preprocess(X_raw, y_raw, lem=False, stem=False, embed=False)
+
+    if test:
+        return X, None, X_test, y, None
 
     X_train, X_val, y_train, y_val = train_test_split(X,
                                                       y,
-                                                      test_size=0.2,
+                                                      test_size=0.01,
                                                       random_state=42)
     if save:
         np.save(_DATA_PATH / "data_test_{exp_name}", X_test, allow_pickle=True)
         np.save(_DATA_PATH / "data_train_{exp_name}", (X_train, y_train), allow_pickle=True)
         np.save(_DATA_PATH / "data_val_glove_{exp_name}", (X_val, y_val), allow_pickle=True)
 
-    return X_train, X_val, y_train, y_val
+    return X_train, X_val, X_test, y_train, y_val
 
 
 def _read_preprocessed(exp_name=""):
@@ -260,11 +255,7 @@ if __name__ == "__main__":
     nltk.download('stopwords')
 
 
-    X_train, X_val, y_train, y_val = _read_data()
-#    for model_name in _CLASSIFIERS.keys():
-    model_name = "xgboost"
-    main(list(X_train), list(X_val), y_train, y_val, clf_name=model_name,
-            bagging=False, boosting=False, voting=False, embed=False)
+    X_train, X_val, X_test, y_train, y_val = _read_data(test=True)
 
-
-
+    model_name = "MLP"
+    y_test = main(X_train, X_val, X_test, y_train, y_val, clf_name=model_name, voting=False, embed=False)
