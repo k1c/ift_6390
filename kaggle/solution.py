@@ -420,8 +420,8 @@ def get_subreddits(df, lem, stem, remove_stop_words):
 
 def main(model,is_train, score, X_train, y_train, X_test, lem, stem, remove_stop_words, alpha, num_keep, batch_size, train_epochs, optimizer_learning_rate, max_sequence_length):
 
-    #X_train = preprocess(X_train, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
-    #X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
+    X_train = preprocess(X_train, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
+    X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words)
 
     if is_train:
         # split train into train / val
@@ -455,21 +455,24 @@ def main(model,is_train, score, X_train, y_train, X_test, lem, stem, remove_stop
 
 
 if __name__ == "__main__":
-    # nltk.download('wordnet')
-    # nltk.download('stopwords')
-    # nltk.download('punkt')
+    nltk.download('wordnet')
+    nltk.download('stopwords')
+    nltk.download('punkt')
 
     #model = "NAIVE_BAYES"
     model = "BERT_MLP"
 
 
     X_train, y_train = read_data(set_="train")
+    X_train = X_train[:12]
+    y_train = y_train[:12]
 
     # convert labels to numbers 0 - 19
     le = preprocessing.LabelEncoder()
     y_train = le.fit_transform(y_train).tolist()
 
     X_test = read_data(set_="test")
+    X_test = X_test[:12]
 
     is_train = True
 
@@ -477,13 +480,13 @@ if __name__ == "__main__":
     score = 0.
     best_config = None
     best_predictions = None
-    for lem in [False]:  # HP_Search params: [True, False]
-        for stem in [False]:  # HP_Search params: [True, False]
-            for remove_stop_words in [False]:  # HP_Search params: [True, False]
+    for lem in [True]:  # HP_Search params: [True, False]
+        for stem in [True]:  # HP_Search params: [True, False]
+            for remove_stop_words in [True]:  # HP_Search params: [True, False]
                 for alpha in [0.1]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
                     for num_keep in [55350]:  # HP_Search params: [40000,50000,540000,55000,55350]
                         for batch_size in [6]:
-                            for train_epochs in [5,10]:
+                            for train_epochs in [5]:
                                 for optimizer_learning_rate in [1e-3]:
                                     for max_sequence_length in [512]:
                                         config = f"smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_keep {num_keep}, batch_size {batch_size}, train_epochs {train_epochs}, optimizer_lr {optimizer_learning_rate}, max_seq_length {max_sequence_length}"
