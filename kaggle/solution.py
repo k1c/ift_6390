@@ -489,7 +489,7 @@ if __name__ == "__main__":
                     for num_keep in [55350]:  # HP_Search params: [40000,50000,540000,55000,55350]
                         for batch_size in [6]:
                             for train_epochs in [5]:
-                                for optimizer_learning_rate in [5e-5]: #1e-3
+                                for optimizer_learning_rate in [5.e-5]: #1e-3
                                     for max_sequence_length in [512]:
                                         config = f"smoothing_param {alpha}, lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_keep {num_keep}, batch_size {batch_size}, train_epochs {train_epochs}, optimizer_lr {optimizer_learning_rate}, max_seq_length {max_sequence_length}"
                                         print(f">>> {config}")
