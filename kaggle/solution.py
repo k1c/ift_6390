@@ -464,15 +464,15 @@ if __name__ == "__main__":
 
 
     X_train, y_train = read_data(set_="train")
-    X_train = X_train[:12]
-    y_train = y_train[:12]
+    #X_train = X_train[:12]
+    #y_train = y_train[:12]
 
     # convert labels to numbers 0 - 19
     le = preprocessing.LabelEncoder()
     y_train = le.fit_transform(y_train).tolist()
 
     X_test = read_data(set_="test")
-    X_test = X_test[:12]
+    #X_test = X_test[:12]
 
     is_train = True
 
