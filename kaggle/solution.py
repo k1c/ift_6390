@@ -133,7 +133,8 @@ class Bert_MLP():
 
         input_ids = list() #list of torch tensors
         for x in X_train:
-            input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
+            if len(x) != 0:
+                input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
 
         num_batches = math.ceil(len(input_ids) / self.batch_size)
 
@@ -188,7 +189,8 @@ class Bert_MLP():
     def predict(self, X_test):
         input_ids = list() #list of torch tensors
         for x in X_test:
-            input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
+            if len(x) != 0:
+                input_ids.append(torch.tensor([self.tokenizer.encode(x, add_special_tokens=True, max_length=self.max_sequence_length)]))
 
         num_batches = math.ceil(len(input_ids) / self.batch_size)
         predictions = list()
@@ -464,15 +466,15 @@ if __name__ == "__main__":
 
 
     X_train, y_train = read_data(set_="train")
-    #X_train = X_train[:12]
-    #y_train = y_train[:12]
+    X_train = X_train[:12]
+    y_train = y_train[:12]
 
     # convert labels to numbers 0 - 19
     le = preprocessing.LabelEncoder()
     y_train = le.fit_transform(y_train).tolist()
 
     X_test = read_data(set_="test")
-    #X_test = X_test[:12]
+    X_test = X_test[:12]
 
     is_train = True
 
