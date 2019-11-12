@@ -485,7 +485,7 @@ if __name__ == "__main__":
             for remove_stop_words in [False]:  # HP_Search params: [True, False]
                 for alpha in [0.1]:  # HP_Search params: [0.01, 0.05, 0.1, 0.15, 0.25, 0.5]
                     for num_keep in [55350]:  # HP_Search params: [40000,50000,540000,55000,55350]
-                        for batch_size in [10]: #6
+                        for batch_size in [6]: #6
                             for train_epochs in [5]:
                                 for optimizer_learning_rate in [5.e-5]: #1e-3
                                     for max_sequence_length in [512]:
