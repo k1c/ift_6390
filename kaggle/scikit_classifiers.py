@@ -1,4 +1,4 @@
-# random_forest.py
+# scikit_classifier.py
 # Isabelle Bouchard
 # Carolyne Pelletier
 # 2019-11-07
@@ -9,12 +9,13 @@ import numpy as np
 import pathlib
 import nltk
 from nltk.stem import WordNetLemmatizer
+from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from sklearn.model_selection import train_test_split
 from nltk.tokenize import RegexpTokenizer
 from flair.data import Sentence
 from flair.embeddings import DocumentPoolEmbeddings
-from flair.embeddings import FlairEmbeddings
+#from flair.embeddings import FlairEmbeddings
 from flair.embeddings import WordEmbeddings
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import CountVectorizer
@@ -29,25 +30,26 @@ from sklearn.ensemble import BaggingClassifier
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.ensemble import VotingClassifier
 
-DATA_PATH = pathlib.Path("data/")
+_DATA_PATH = pathlib.Path("data/")
 
 _CLASSIFIERS = {
     "Random Forest": (
-        RandomForestClassifier(n_estimators=200, max_depth=150, random_state=42),
+        RandomForestClassifier(random_state=42),
         {
+            "n_estimators": [200],
+            "max_depth": [15, 25, 35]
         }
     ),
     "Logistic Regression": (
         LogisticRegression(solver="saga", multi_class="multinomial"),
         {
-            "clf__penalty": ["l2", "l1"]
-
+            "penalty": ["l2", "l1"]
         }
     ),
     "Naive Bayes": (
         MultinomialNB(),
         {
-            "clf__alpha": [0.15, 0, 2, 0.25, 0.3, 0., 35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65],
+            "alpha": [0.15, 0, 2, 0.25, 0.3, 0., 35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65],
         }
     ),
     "SVM_0": (
@@ -63,32 +65,55 @@ _CLASSIFIERS = {
 }
 
 _EMBEDDER = DocumentPoolEmbeddings([
-    FlairEmbeddings("en-forward"),
-    FlairEmbeddings("en-backward"),
     WordEmbeddings("glove"),
 ], "mean")
 
 def read_data(set_):
-    return np.load(DATA_PATH / f"data_{set_}.pkl", allow_pickle=True)
+    return np.load(_DATA_PATH / f"data_{set_}", allow_pickle=True)
+
+def preprocess_test(X, lem=True, stem=True, embed=True):
+    preprocessed_x = []
+    print(len(X))
+    for i, line_x in enumerate(X):
+        p = preprocess_line(line_x, lem, stem, embed)
+        if p is None:
+            p = np.zeros(4196)
+        preprocessed_x.append(p)
+        if i % 100 == 0:
+            print(i)
+
+    return preprocessed_x
+
 
 
 def preprocess(X, y, lem=True, stem=True, embed=True):
     preprocessed_x = []
     preprocessed_y = []
+    print(len(X))
+    i = 0
     for line_x, line_y in zip(X, y):
+        i += 1
         p = preprocess_line(line_x, lem, stem, embed)
-        if len(p) == 0:
+        if p is None:
+            continue
+        if len(p) > 0:
             preprocessed_x.append(p)
             preprocessed_y.append(line_y)
+        if i % 100 == 0:
+            print(i)
+
     return preprocessed_x, preprocessed_y
 
-def preprocess_line(line, lem=True, stem=True, embed=True):
+def preprocess_line(original_line, lem=True, stem=True, embed=True,remove_stop_words=True, extra_features=False):
     tokenizer = RegexpTokenizer(r"(?u)\b\w\w+\b")
 
     # lower sent
-    line = line.lower()
+    line = original_line.lower()
 
     line = tokenizer.tokenize(line)
+
+    if extra_features:
+        features = _extract_features(original_line, line)
 
     if lem:
         lemmatizer = WordNetLemmatizer()
@@ -98,17 +123,47 @@ def preprocess_line(line, lem=True, stem=True, embed=True):
         stemmer = PorterStemmer()
         line = [stemmer.stem(word) for word in line]
 
+    if remove_stop_words:
+        stop_words = set(stopwords.words('english'))
+        new_line = [word for word in line if not word in stop_words]
+        # n_stop_words
+        #features.append(len(line) - len(new_line))
+        line = new_line
+
     line = " ".join(line)
 
     if embed:
         try:
             sentence = Sentence(line)
             _EMBEDDER.embed(sentence)
-            line = sentence.get_embedding().detach().numpy()
+            line = sentence.get_embedding().cpu().detach().numpy()
         except Exception:
             return None
 
+    if extra_features:
+        # concat features at the end!
+        np.concatenate((line, np.asarray(features)))
+
     return line
+
+
+def _extract_features(original_line, line):
+    # Has a link in it
+    has_link = int("http" in original_line)
+
+    # Sentence length
+    len_ = len(original_line)
+
+    # Exclamation mark
+    ratio_ex = len([c for c in line if c == "!"]) / len_
+
+    # Question mark
+    ratio_q = len([c for c in line if c == "?"]) / len_
+
+    # Upper case
+    ratio_up = len([c for c in line if c.isupper]) / len_
+
+    return [has_link, len_, ratio_ex, ratio_q, ratio_up]
 
 
 def write_csv(y_prediction):
@@ -173,23 +228,43 @@ def main(X_train, X_val, y_train, y_val, clf_name="SVM_1",
     return accuracy, best_params
 
 
+def _read_data(save=True, exp_name=""):
+    X_test = read_data(set_="test.pkl")
+    X_test = preprocess_test(X_test, lem=False, stem=False, embed=True)
+
+    X_raw, y_raw = read_data(set_="train.pkl")
+    X, y = preprocess(X_raw, y_raw, lem=True, stem=True, embed=True)
+
+    X_train, X_val, y_train, y_val = train_test_split(X,
+                                                      y,
+                                                      test_size=0.2,
+                                                      random_state=42)
+    if save:
+        np.save(_DATA_PATH / "data_test_{exp_name}", X_test, allow_pickle=True)
+        np.save(_DATA_PATH / "data_train_{exp_name}", (X_train, y_train), allow_pickle=True)
+        np.save(_DATA_PATH / "data_val_glove_{exp_name}", (X_val, y_val), allow_pickle=True)
+
+    return X_train, X_val, y_train, y_val
+
+
+def _read_preprocessed(exp_name=""):
+    X_train, y_train = read_data(set_="train_{exp_name}.npy")
+    X_val, y_val = read_data(set_="val_{exp_name}.npy")
+
+    return X_train, X_val, y_train, y_val
 
 if __name__ == "__main__":
+
     nltk.download('wordnet')
     nltk.download('punkt')
+    nltk.download('stopwords')
 
-    # Read data
-    X_raw, y_raw = read_data(set_="train")
 
-    for lem in [False]:
-        print(f"LEM {lem}")
-        for stem in [False]:
-            print(f"STEM {stem}")
-            # Preprocess data
-            X, y = preprocess(X_raw, y_raw, lem=lem, stem=stem, embed=True)
-            X_train, X_val, y_train, y_val = train_test_split(X,
-                                                              y,
-                                                              test_size=0.2,
-                                                              random_state=42)
-            for model_name in _CLASSIFIERS.keys():
-                main(X_train, X_val, y_train, y_val, clf_name=model_name, embed=True)
+    X_train, X_val, y_train, y_val = _read_data()
+#    for model_name in _CLASSIFIERS.keys():
+    model_name = "xgboost"
+    main(list(X_train), list(X_val), y_train, y_val, clf_name=model_name,
+            bagging=False, boosting=False, voting=False, embed=False)
+
+
+
