@@ -210,7 +210,7 @@ def _read_data(lem, stem, remove_stop_words, extra_features, embed, test=False):
 def _parse_args():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument(
-        "model_name",
+        "--model_name",
         type=str,
         help=f"One of {_CLASSIFIERS.keys()}",
     )
@@ -225,7 +225,7 @@ def _parse_args():
         help="Whether or not to apply lemmatization",
     )
     parser.add_argument(
-        "--lem",
+        "--stem",
         action="store_true",
         help="Whether or not to apply stemming",
     )

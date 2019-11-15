@@ -22,7 +22,7 @@ docker build -t IMAGE_NAME .
 nvidia-docker run --rm -it -v /path/to/your/code/:/project IMAGE_NAME
 ```
 
-Download data and unzip it in `kaggle/data/`
+Download data and unzip it in `data/`
 
 
 ## Run Naive Bayes
@@ -31,7 +31,7 @@ To run the script to train and evaluate Naive Bayes model implemented from
 scratch, simply run the following command in your environment
 
 ```
-python kaggle/naive_bayes.py
+python naive_bayes.py
 ```
 
 
@@ -40,7 +40,7 @@ python kaggle/naive_bayes.py
 
 To train sklearn classifiers, run the following in your environment
 ```
-python kaggle/scikit_classifiers.py  
+python scikit_classifiers.py  
 ```
 
 Add `--help` to see the options of classifiers, input features and preprocessing.
@@ -60,6 +60,15 @@ Add `--help` to see the options of classifiers, input features and preprocessing
 - Lemmatization
 - Stemming
 - Remove stop words 
+
+
+To reproduce the best submission, you should run 
+```
+python scikit_classifiers.py  --model_name MLP --input TFIDF --test. 
+```
+
+The script will output a prediction file ready for Kaggle 
+submission called `submission.csv`.
 
 
 ## Authors 
