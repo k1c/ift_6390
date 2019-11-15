@@ -79,6 +79,7 @@ class Bert_MLP():
 
         #CUDA
         self.encoding.to(DEVICE)
+        self.linear.to(DEVICE)
         self.classifier.to(DEVICE)
 
 
