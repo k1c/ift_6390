@@ -242,8 +242,8 @@ if __name__ == "__main__":
             for remove_stop_words in [True]:
                 for num_keep in [50000]: # TFIDF keep top 50K
                     for batch_size in [6]: #6
-                        for train_epochs in [5]:
-                            for optimizer_learning_rate in [5.e-5]: #1e-3
+                        for train_epochs in [10]: #5
+                            for optimizer_learning_rate in [0.0001]: #1e-3, 5.e-5
                                 for max_sequence_length in [512]:
                                     config = f"lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_keep {num_keep}, batch_size {batch_size}, train_epochs {train_epochs}, optimizer_lr {optimizer_learning_rate}, max_seq_length {max_sequence_length}"
                                     print(f">>> {config}")
