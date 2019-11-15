@@ -212,12 +212,12 @@ def _parse_args():
     parser.add_argument(
         "--model-name",
         type=str,
-        help=f"One of {_CLASSIFIERS.keys()}",
+        help=f"One of {list(_CLASSIFIERS.keys())}",
     )
     parser.add_argument(
         "--input",
         type=str,
-        help="One of {_INPUT_OPTIONS.keys()}",
+        help=f"One of {list(_INPUT_OPTIONS.keys())}",
     )
     parser.add_argument(
         "--lem",
