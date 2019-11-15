@@ -38,8 +38,8 @@ class Bert_MLP():
         self.linear = torch.nn.Linear(768, 275)
         self.classifier = torch.nn.Linear(275, 20) #bert embedding size x number of classifiers
         self.relu = torch.nn.ReLU()
-        #self.optimizer = torch.optim.SGD(list(self.linear.parameters()) + list(self.classifier.parameters()), lr=0.0001, momentum=0.9)
-        self.optimizer = torch.optim.Adam(list(self.linear.parameters()) + list(self.classifier.parameters()), lr=optimizer_learning_rate)
+        self.optimizer = torch.optim.SGD(list(self.linear.parameters()) + list(self.classifier.parameters()), lr=0.0001, momentum=0.9)
+        #self.optimizer = torch.optim.Adam(list(self.linear.parameters()) + list(self.classifier.parameters()), lr=optimizer_learning_rate)
         self.batch_size = batch_size
         self.max_sequence_length = max_sequence_length
         self.num_train_epochs = train_epochs
