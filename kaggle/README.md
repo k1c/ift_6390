@@ -24,34 +24,42 @@ nvidia-docker run --rm -it -v /path/to/your/code/:/project IMAGE_NAME
 
 Download data and unzip it in `kaggle/data/`
 
+
 ## Run Naive Bayes
 
-To run the script to train and evaluate Naive Bayes model,
-simply run the following command in your environment
+To run the script to train and evaluate Naive Bayes model implemented from
+scratch, simply run the following command in your environment
 
 ```
-python kaggle/solution.py
-```
-
-## Run transformers models
-
-It is highly recommended to run the training on (multiple) GPUs.
-
-```
-python models/transformers.py \
-    --model_type bert \
-    --model_name_or_path bert-base-cased \
-    --do_train \
-    --do_eval \
-    --data_dir data/ \
-    --max_seq_length 128 \
-    --per_gpu_train_batch_size 32 \
-    --learning_rate 2e-5 \
-    --num_train_epochs 3.0 \
-    --output_dir output/
+python kaggle/naive_bayes.py
 ```
 
 
+## Run sklearn classifiers
+
+
+To train sklearn classifiers, run the following in your environment
+```
+python kaggle/scikit_classifiers.py  
+```
+
+Add `--help` to see the options of classifiers, input features and preprocessing.
+
+### Classifiers
+- MLP
+- Random Forest
+- Logistic Regression
+- Naive Bayes
+- SVM
+
+### Input features 
+- TFIDF
+- Glove Embedding with or without extra engineered features
+
+### Preprocessing 
+- Lemmatization
+- Stemming
+- Remove stop words 
 
 
 ## Authors 

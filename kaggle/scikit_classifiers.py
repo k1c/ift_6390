@@ -5,6 +5,7 @@
 # IFT-6390
 
 import csv
+import argparse
 import numpy as np
 import pathlib
 import nltk
@@ -24,22 +25,22 @@ from sklearn.linear_model import SGDClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import LinearSVC
-from sklearn.ensemble import VotingClassifier
 from sklearn.neural_network import MLPClassifier
 
 _DATA_PATH = pathlib.Path("data/")
 
 _CLASSIFIERS = {
     "MLP": (
-        MLPClassifier(hidden_layer_sizes=250, verbose=1, early_stopping=True),
+        MLPClassifier(hidden_layer_sizes=275, early_stopping=True, validation_fraction=0.005, learning_rate_init=0.0001),
         {
+            "hidden_layer_sizes": [225, 250, 275],
+            "learning_rate_init": [225, 250, 275],
         }
     ),
     "Random Forest": (
         RandomForestClassifier(random_state=42),
         {
-            "n_estimators": [200],
+            "n_estimators": [50, 100, 200],
             "max_depth": [15, 25, 35]
         }
     ),
@@ -55,59 +56,35 @@ _CLASSIFIERS = {
             "alpha": [0.15, 0.25, 0.5, 0.65],
         }
     ),
-    "SVM_0": (
-        LinearSVC(),
-        {
-        },
-    ),
-    "SVM_2": (
+    "SVM": (
         SGDClassifier(loss='hinge', alpha=0.001, random_state=42),
         {
+            "alpha": [0.0005, 0.001, 0.005, 0.01],
         }
     ),
 }
 
-_EMBEDDER = DocumentPoolEmbeddings([
-    WordEmbeddings("glove"),
-], "mean")
+_EMBEDDER = DocumentPoolEmbeddings([WordEmbeddings("glove")], "mean")
+
+
+_INPUT_OPTIONS = {
+    "TFIDF": (False, False),
+    "GloveExtraFeatures": (True, True),
+    "Glove": (True, False),
+}
+
 
 def read_data(set_):
     return np.load(_DATA_PATH / f"data_{set_}", allow_pickle=True)
 
-def preprocess_test(X, lem=True, stem=True, embed=True):
-    preprocessed_x = []
-    print(len(X))
-    for i, line_x in enumerate(X):
-        p = preprocess_line(line_x, lem, stem, embed)
-        if p is None:
-            p = np.zeros(4196)
-        preprocessed_x.append(p)
-        if i % 100 == 0:
-            print(i)
 
-    return preprocessed_x
+def preprocess(X, lem=True, stem=True, embed=True,
+               remove_stop_words=True, extra_features=False):
+    return [preprocess_line(line_x, lem, stem, embed,
+                            remove_stop_words, extra_features) for line_x in X]
 
-
-
-def preprocess(X, y, lem=True, stem=True, embed=True):
-    preprocessed_x = []
-    preprocessed_y = []
-    print(len(X))
-    i = 0
-    for line_x, line_y in zip(X, y):
-        i += 1
-        p = preprocess_line(line_x, lem, stem, embed)
-        if p is None:
-            continue
-        if len(p) > 0:
-            preprocessed_x.append(p)
-            preprocessed_y.append(line_y)
-        if i % 100 == 0:
-            print(i)
-
-    return preprocessed_x, preprocessed_y
-
-def preprocess_line(original_line, lem=True, stem=True, embed=True,remove_stop_words=True, extra_features=False):
+def preprocess_line(original_line, lem=True, stem=True, embed=True,
+                    remove_stop_words=True, extra_features=False):
     tokenizer = RegexpTokenizer(r"(?u)\b\w\w+\b")
 
     # lower sent
@@ -185,12 +162,15 @@ def run_grid_search(clf, parameters, X_train, X_val, X_test, y_train, y_val, emb
             ('tfidf', TfidfTransformer()),
             ('clf', clf),
         ])
+
+    # If we have a valid set, it means we are in training mode
     if X_val:
-        clf = GridSearchCV(clf, parameters, cv=2, iid=False, n_jobs=-1)
+        clf = GridSearchCV(clf, parameters, cv=5, iid=False, n_jobs=-1)
 
     clf.fit(X_train, y_train)
 
-    if not X_val:
+    # Test mode
+    if X_test:
         test_prediction = clf.predict(X_test)
         write_csv(test_prediction)
         return 0., {}
@@ -200,19 +180,8 @@ def run_grid_search(clf, parameters, X_train, X_val, X_test, y_train, y_val, emb
     return accuracy, clf.best_params_
 
 
-def main(X_train, X_val, X_test, y_train, y_val, clf_name="SVM_1",
-         voting=False, embed=False):
-
-    if isinstance(clf_name, str):
-        clf, params = _CLASSIFIERS[clf_name]
-
-    if voting:
-        estimators = [(name, _CLASSIFIERS[name][0]) for name in clf_name]
-        clf = VotingClassifier(estimators=estimators, voting='hard')
-        clf_name = "voting"
-        params= {}
-
-
+def main(X_train, X_val, X_test, y_train, y_val, clf_name, embed=False):
+    clf, params = _CLASSIFIERS[clf_name]
     print(f"Running GS for {clf_name}...")
     accuracy, best_params = run_grid_search(clf, params, X_train, X_val, X_test, y_train, y_val, embed)
     print(f">>> {clf_name} score = {accuracy}")
@@ -220,42 +189,68 @@ def main(X_train, X_val, X_test, y_train, y_val, clf_name="SVM_1",
     return accuracy, best_params
 
 
-def _read_data(save=False, exp_name="", test=False):
-    X_test = read_data(set_="test.pkl")
-    X_test = preprocess_test(X_test, lem=False, stem=False, embed=False)
-
+def _read_data(lem, stem, remove_stop_words, extra_features, embed, test=False):
     X_raw, y_raw = read_data(set_="train.pkl")
-    X, y = preprocess(X_raw, y_raw, lem=False, stem=False, embed=False)
+    X = preprocess(X_raw, lem=lem, stem=stem, remove_stop_words=remove_stop_words,
+                   extra_features=extra_features, embed=embed)
 
     if test:
-        return X, None, X_test, y, None
+        X_test = read_data(set_="test.pkl")
+        X_test = preprocess(X_test, lem=lem, stem=stem, remove_stop_words=remove_stop_words,
+                            extra_features=extra_features, embed=embed)
+        return X, None, X_test, y_raw, None
 
     X_train, X_val, y_train, y_val = train_test_split(X,
-                                                      y,
+                                                      y_raw,
                                                       test_size=0.01,
                                                       random_state=42)
-    if save:
-        np.save(_DATA_PATH / "data_test_{exp_name}", X_test, allow_pickle=True)
-        np.save(_DATA_PATH / "data_train_{exp_name}", (X_train, y_train), allow_pickle=True)
-        np.save(_DATA_PATH / "data_val_glove_{exp_name}", (X_val, y_val), allow_pickle=True)
-
-    return X_train, X_val, X_test, y_train, y_val
+    return X_train, X_val, None, y_train, y_val
 
 
-def _read_preprocessed(exp_name=""):
-    X_train, y_train = read_data(set_="train_{exp_name}.npy")
-    X_val, y_val = read_data(set_="val_{exp_name}.npy")
+def _parse_args():
+    parser = argparse.ArgumentParser(__doc__)
+    parser.add_argument(
+        "model_name",
+        type=str,
+        help=f"One of {_CLASSIFIERS.keys()}",
+    )
+    parser.add_argument(
+        "--input",
+        type=str,
+        help="One of {_INPUT_OPTIONS.keys()}",
+    )
+    parser.add_argument(
+        "--lem",
+        action="store_true",
+        help="Whether or not to apply lemmatization",
+    )
+    parser.add_argument(
+        "--lem",
+        action="store_true",
+        help="Whether or not to apply stemming",
+    )
+    parser.add_argument(
+        "--rm-stop-words",
+        action="store_true",
+        help="Whether or not to remove stop_words",
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Whether or not to run test predictions and to output to csv file",
+    )
+    return parser.parse_args()
 
-    return X_train, X_val, y_train, y_val
 
 if __name__ == "__main__":
-
     nltk.download('wordnet')
     nltk.download('punkt')
     nltk.download('stopwords')
 
-
-    X_train, X_val, X_test, y_train, y_val = _read_data(test=True)
-
-    model_name = "MLP"
-    y_test = main(X_train, X_val, X_test, y_train, y_val, clf_name=model_name, voting=False, embed=False)
+    args = _parse_args()
+    embed, extra_features = _INPUT_OPTIONS[args.input]
+    X_train, X_val, X_test, y_train, y_val = _read_data(lem=args.lem, stem=args.stem,
+                                                        remove_stop_words=args.rm_stop_words,
+                                                        extra_features=extra_features,
+                                                        embed=embed, test=args.test)
+    main(X_train, X_val, X_test, y_train, y_val, clf_name=args.model_name)
