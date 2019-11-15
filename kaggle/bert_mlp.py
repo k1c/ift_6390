@@ -38,8 +38,8 @@ class Bert_MLP():
         self.linear = torch.nn.Linear(768, 275)
         self.classifier = torch.nn.Linear(275, 20) #bert embedding size x number of classifiers
         self.relu = torch.nn.ReLU()
-        self.optimizer = torch.optim.SGD(list(self.linear.parameters()) + list(self.classifier.parameters()), lr=0.0001, momentum=0.9)
-        #self.optimizer = torch.optim.Adam(list(self.linear.parameters()) + list(self.classifier.parameters()), lr=optimizer_learning_rate)
+        #self.optimizer = torch.optim.SGD(list(self.linear.parameters()) + list(self.classifier.parameters()), lr=0.0001, momentum=0.9)
+        self.optimizer = torch.optim.Adam(list(self.encoding.parameters()) + list(self.linear.parameters()) + list(self.classifier.parameters()), lr=optimizer_learning_rate, eps=1e-8) #lr = 5e-5,adam_epsilon=1e-8
         self.batch_size = batch_size
         self.max_sequence_length = max_sequence_length
         self.num_train_epochs = train_epochs
@@ -241,9 +241,9 @@ if __name__ == "__main__":
         for stem in [False]:
             for remove_stop_words in [True]:
                 for num_keep in [50000]: # TFIDF keep top 50K
-                    for batch_size in [6]: #6
-                        for train_epochs in [10]: #5
-                            for optimizer_learning_rate in [0.0001]: #1e-3, 5.e-5
+                    for batch_size in [6,8]: #6 ,default = 3
+                        for train_epochs in [3,6,9]: #5
+                            for optimizer_learning_rate in [1e-3, 5e-5]: #1e-3, 5.e-5
                                 for max_sequence_length in [512]:
                                     config = f"lem {lem}, stem {stem}, remove_stop_word {remove_stop_words}, num_keep {num_keep}, batch_size {batch_size}, train_epochs {train_epochs}, optimizer_lr {optimizer_learning_rate}, max_seq_length {max_sequence_length}"
                                     print(f">>> {config}")
