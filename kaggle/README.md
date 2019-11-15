@@ -64,7 +64,7 @@ Add `--help` to see the options of classifiers, input features and preprocessing
 
 To reproduce the best submission, you should run 
 ```
-python scikit_classifiers.py  --model_name MLP --input TFIDF --test. 
+python scikit_classifiers.py  --model-name MLP --input TFIDF --rm-stop-words --test
 ```
 
 The script will output a prediction file ready for Kaggle 

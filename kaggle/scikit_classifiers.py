@@ -210,7 +210,7 @@ def _read_data(lem, stem, remove_stop_words, extra_features, embed, test=False):
 def _parse_args():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument(
-        "--model_name",
+        "--model-name",
         type=str,
         help=f"One of {_CLASSIFIERS.keys()}",
     )
